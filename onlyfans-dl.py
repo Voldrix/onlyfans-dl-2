@@ -48,14 +48,14 @@ API_HEADER = {
 	"User-Agent": USER_AGENT,
 	"x-bc": X_BC,
 	"user-id": USER_ID,
-	"Cookie": "auh_id=" + USER_ID + "; sess=" + SESS_COOKIE
+	"Cookie": f"auh_id={USER_ID}; sess={SESS_COOKIE}"
 }
 
 def create_signed_headers(link, queryParams):
 	global API_HEADER
 	path = "/api2/v2" + link
 	if queryParams:
-		query = '&'.join('='.join((key,val)) for (key,val) in queryParams.items())
+		query = '&'.join(f"{key}={val}" for key, val in queryParams.items())
 		path = f"{path}?{query}"
 	unixtime = str(int(datetime.now().timestamp()))
 	msg = "\n".join([dynamic_rules["static_param"], unixtime, path, USER_ID])
@@ -66,7 +66,7 @@ def create_signed_headers(link, queryParams):
 	checksum = sum([sha_1_b[number] for number in dynamic_rules["checksum_indexes"]])+dynamic_rules["checksum_constant"]
 	API_HEADER["sign"] = dynamic_rules["format"].format(sha_1_sign, abs(checksum))
 	API_HEADER["time"] = unixtime
-	return
+	return API_HEADER
 
 
 def api_request(endpoint, apiType):
@@ -83,7 +83,7 @@ def api_request(endpoint, apiType):
 		if apiType == 'messages':
 			getParams['id'] = main_list[-1]['id']
 		elif apiType == 'purchased' or apiType == 'subscriptions':
-			getParams['offset'] += posts_limit)
+			getParams['offset'] += posts_limit
 		else:
 			getParams['afterPublishTime'] = list_extend[-1]['postedAtPrecise']
 		unused_json_data, list_extend, has_more_data = use_requests(endpoint, getParams)
