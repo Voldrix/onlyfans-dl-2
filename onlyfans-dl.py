@@ -69,6 +69,22 @@ def create_signed_headers(link, queryParams):
 	return API_HEADER
 
 
+def use_requests(endpoint, getParams, posts_limit=50):
+	getParams = getParams | {"limit" : posts_limit}
+	getParams = {str(key): str(val) for key, val in getParams} # string conversion
+	create_signed_headers(endpoint, getParams)
+	try:
+		response = requests.get(API_URL + endpoint, headers=API_HEADER, params=getParams)
+		assert response.ok, f"status code is {response.status_code}"
+	except AssertionError as e:
+		print(e) #logging.error("Failure to get request", exc_info=e)
+		return {"error": {"message": f"http error {e}"}}, [], False
+	json_data = response.json()
+	main_list = json_data.pop("list")
+	has_more_data = json_data.get("hasMore", False) or len(main_list) >= posts_limit
+	return json_data, main_list, has_more_data
+
+
 def api_request(endpoint, apiType):
 	if apiType == 'messages':
 		getParams = {"order": "desc"}
@@ -89,22 +105,6 @@ def api_request(endpoint, apiType):
 		unused_json_data, list_extend, has_more_data = use_requests(endpoint, getParams)
 		main_list.extend(list_extend)
 	return some_json_data | {"list": main_list}
-
-def use_requests(endpoint, getParams, posts_limit=50):
-	getParams = getParams | {"limit" : posts_limit}
-	getParams = {str(key): str(val) for key, val in getParams} # string conversion
-	create_signed_headers(endpoint, getParams)
-	try:
-		response = requests.get(API_URL + endpoint, headers=API_HEADER, params=getParams)
-		assert response.ok, f"status code is {response.status_code}"
-	except AssertionError as e:
-		print(e) #logging.error("Failure to get request", exc_info=e)
-		return {"error": {"message": f"http error {e}"}}, [], False
-	json_data = response.json()
-	main_list = json_data.pop("list")
-	has_more_data = json_data.get("hasMore", False) or len(main_list) >= posts_limit
-	return json_data, main_list, has_more_data
-
 
 def get_user_info(profile):
 	# <profile> = "me" -> info about yourself
