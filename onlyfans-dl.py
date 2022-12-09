@@ -131,7 +131,7 @@ def download_media(media, subtype, postdate, album = ''):
 		assert media['canView'], "Can't view media"
 		valid_types = {"photo": PHOTOS, "video": VIDEOS, "audio": AUDIO}
 		assert valid_types.get(media["type"], False), "Not valid type"
-	except AssertionError as e:
+	except Exception as e:
 		print(e)
 		return
 	
