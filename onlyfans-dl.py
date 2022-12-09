@@ -69,7 +69,7 @@ def create_signed_headers(link, queryParams):
 	return
 
 
-def api_request(endpoint, apiType, posts_limit = 50):
+def api_request(endpoint, apiType):
 	if apiType == 'messages':
 		getParams = {"order": "desc"}
 	elif apiType == 'subscriptions':
@@ -86,7 +86,7 @@ def api_request(endpoint, apiType, posts_limit = 50):
 			getParams['offset'] += posts_limit)
 		else:
 			getParams['afterPublishTime'] = list_extend[-1]['postedAtPrecise']
-		unused_json_data, list_extend, has_more_data = use_requests(endpoint, getParams):
+		unused_json_data, list_extend, has_more_data = use_requests(endpoint, getParams)
 		main_list.extend(list_extend)
 	return some_json_data | {"list": main_list}
 
@@ -124,19 +124,23 @@ def get_subscriptions():
 
 
 def download_media(media, subtype, postdate, album = ''):
-	filename = postdate + "_" + str(media["id"])
-	if subtype == "stories":
-		source = media["files"]["source"]["url"]
-	else:
-		source = media["source"]["source"]
-
+	# Validate media
 	try:
+		assert "files" in media, "media does not have files"
+		assert media["source"]["source"], "media source missing"
 		assert media['canView'], "Can't view media"
 		valid_types = {"photo": PHOTOS, "video": VIDEOS, "audio": AUDIO}
 		assert valid_types.get(media["type"], False), "Not valid type"
 	except AssertionError as e:
 		print(e)
 		return
+	
+	filename = postdate + "_" + str(media["id"])
+	if subtype == "stories":
+		source = media["files"]["source"]["url"]
+	else:
+		source = media["source"]["source"]
+
 
 	extension = source.split('?')[0].split('.')
 	ext = '.' + extension[-1]
@@ -198,8 +202,7 @@ def get_content(MEDIATYPE, API_LOCATION):
 			for media in post["media"]:
 				if MEDIATYPE == "stories":
 					postdate = str(media["createdAt"][:10])
-				if "source" in media and "source" in media["source"] and media["source"]["source"] and ("canView" not in media or media["canView"]) or "files" in media:
-					download_media(media, MEDIATYPE, postdate, album)
+				download_media(media, MEDIATYPE, postdate, album)
 		global new_files
 		print("Downloaded " + str(new_files) + " new " + MEDIATYPE)
 		new_files = 0
