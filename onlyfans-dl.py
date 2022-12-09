@@ -130,13 +130,16 @@ def download_media(media, subtype, postdate, album = ''):
 	else:
 		source = media["source"]["source"]
 
-	if (media["type"] != "photo" and media["type"] != "video" and media["type"] != "audio") or not media['canView']:
-		return
-	if (media["type"] == "photo" and not PHOTOS) or (media["type"] == "video" and not VIDEOS) or (media["type"] == "audio" and not AUDIO):
+	try:
+		assert media['canView'], "Can't view media"
+		valid_types = {"photo": PHOTOS, "video": VIDEOS, "audio": AUDIO}
+		assert valid_types.get(media["type"], False), "Not valid type"
+	except AssertionError as e:
+		print(e)
 		return
 
 	extension = source.split('?')[0].split('.')
-	ext = '.' + extension[len(extension)-1]
+	ext = '.' + extension[-1]
 	if len(ext) < 3:
 		return
 
