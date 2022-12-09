@@ -69,50 +69,41 @@ def create_signed_headers(link, queryParams):
 	return
 
 
-def api_request(endpoint, apiType):
-	posts_limit = 50
-	getParams = { "limit": str(posts_limit), "order": "publish_date_asc"}
+def api_request(endpoint, apiType, posts_limit = 50):
 	if apiType == 'messages':
-		getParams['order'] = "desc"
-	if apiType == 'subscriptions':
-		getParams['type'] = 'active'
-	if MAX_AGE and apiType != 'messages' and apiType != 'purchased' and apiType != 'subscriptions': #Cannot be limited by age
-		getParams['afterPublishTime'] = str(MAX_AGE) + ".000000"
-		#Messages can only be limited by offset or last message ID. This requires its own separate function. TODO
-	create_signed_headers(endpoint, getParams)
-	status = requests.get(API_URL + endpoint, headers=API_HEADER, params=getParams)
-	if status.ok:
-		list_base = status.json()
-	else:
-		return json.loads('{"error":{"message":"http '+str(status.status_code)+'"}}')
-
-	# Fixed the issue with the maximum limit of 50 posts by creating a kind of "pagination"
-	if (len(list_base) >= posts_limit and apiType != 'user-info') or ('hasMore' in list_base and list_base['hasMore']):
+		getParams = {"order": "desc"}
+	elif apiType == 'subscriptions':
+		getParams = {"order": "publish_date_asc", "type": "active", "offset": 0}
+	elif apiType == 'purchased': 
+		getParams = {"order": "publish_date_asc", "offset": 0}
+	elif MAX_AGE and apiType not in ('messages', 'purchased', 'subscriptions'): #Cannot be limited by age
+		getParams = {"order": "publish_date_asc", "afterPublishTime": str(MAX_AGE) + ".000000"}
+	some_json_data, main_list, has_more_data = use_requests(endpoint, getParams)
+	while has_more_data: # Fixed the issue with the maximum limit of 50 posts by creating a kind of "pagination"	
 		if apiType == 'messages':
-			getParams['id'] = str(list_base['list'][len(list_base['list'])-1]['id'])
+			getParams['id'] = main_list[-1]['id']
 		elif apiType == 'purchased' or apiType == 'subscriptions':
-			getParams['offset'] = str(posts_limit)
+			getParams['offset'] += posts_limit)
 		else:
-			getParams['afterPublishTime'] = list_base[len(list_base)-1]['postedAtPrecise']
-		while 1:
-			create_signed_headers(endpoint, getParams)
-			status = requests.get(API_URL + endpoint, headers=API_HEADER, params=getParams)
-			if status.ok:
-				list_extend = status.json()
-			if apiType == 'messages':
-				list_base['list'].extend(list_extend['list'])
-				if list_extend['hasMore'] == False or len(list_extend['list']) < posts_limit or not status.ok:
-					break
-				getParams['id'] = str(list_base['list'][len(list_base['list'])-1]['id'])
-				continue
-			list_base.extend(list_extend) # Merge with previous posts
-			if len(list_extend) < posts_limit:
-				break
-			if apiType == 'purchased' or apiType == 'subscriptions':
-				getParams['offset'] = str(int(getParams['offset']) + posts_limit)
-			else:
-				getParams['afterPublishTime'] = list_extend[len(list_extend)-1]['postedAtPrecise']
-	return list_base
+			getParams['afterPublishTime'] = list_extend[-1]['postedAtPrecise']
+		unused_json_data, list_extend, has_more_data = use_requests(endpoint, getParams):
+		main_list.extend(list_extend)
+	return some_json_data | {"list": main_list}
+
+def use_requests(endpoint, getParams, posts_limit=50):
+	getParams = getParams | {"limit" : posts_limit}
+	getParams = {str(key): str(val) for key, val in getParams} # string conversion
+	create_signed_headers(endpoint, getParams)
+	try:
+		response = requests.get(API_URL + endpoint, headers=API_HEADER, params=getParams)
+		assert response.ok, f"status code is {response.status_code}"
+	except AssertionError as e:
+		print(e) #logging.error("Failure to get request", exc_info=e)
+		return {"error": {"message": f"http error {e}"}}, [], False
+	json_data = response.json()
+	main_list = json_data.pop("list")
+	has_more_data = json_data.get("hasMore", False) or len(main_list) >= posts_limit
+	return json_data, main_list, has_more_data
 
 
 def get_user_info(profile):
