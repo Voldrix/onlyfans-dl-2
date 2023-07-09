@@ -55,7 +55,7 @@ def create_signed_headers(link, queryParams):
 	global API_HEADER
 	path = "/api2/v2" + link
 	if queryParams:
-		query = '&'.join('='.join((key,val)) for (key,val) in queryParams.items())
+		query = '&'.join(f'{key}={val}' for key, val in queryParams.items())
 		path = f"{path}?{query}"
 	unixtime = str(int(datetime.now().timestamp()))
 	msg = "\n".join([dynamic_rules["static_param"], unixtime, path, USER_ID])
@@ -69,8 +69,7 @@ def create_signed_headers(link, queryParams):
 	return
 
 
-def api_request(endpoint, apiType):
-	posts_limit = 50
+def api_request(endpoint, apiType, posts_limit = 50):
 	getParams = { "limit": str(posts_limit), "order": "publish_date_asc"}
 	if apiType == 'messages':
 		getParams['order'] = "desc"
@@ -89,11 +88,11 @@ def api_request(endpoint, apiType):
 	# Fixed the issue with the maximum limit of 50 posts by creating a kind of "pagination"
 	if (len(list_base) >= posts_limit and apiType != 'user-info') or ('hasMore' in list_base and list_base['hasMore']):
 		if apiType == 'messages':
-			getParams['id'] = str(list_base['list'][len(list_base['list'])-1]['id'])
+			getParams['id'] = str(list_base['list'][-1]['id'])
 		elif apiType == 'purchased' or apiType == 'subscriptions':
 			getParams['offset'] = str(posts_limit)
 		else:
-			getParams['afterPublishTime'] = list_base[len(list_base)-1]['postedAtPrecise']
+			getParams['afterPublishTime'] = list_base[-1]['postedAtPrecise']
 		while 1:
 			create_signed_headers(endpoint, getParams)
 			status = requests.get(API_URL + endpoint, headers=API_HEADER, params=getParams)
@@ -103,7 +102,7 @@ def api_request(endpoint, apiType):
 				list_base['list'].extend(list_extend['list'])
 				if list_extend['hasMore'] == False or len(list_extend['list']) < posts_limit or not status.ok:
 					break
-				getParams['id'] = str(list_base['list'][len(list_base['list'])-1]['id'])
+				getParams['id'] = str(list_base['list'][-1]['id'])
 				continue
 			list_base.extend(list_extend) # Merge with previous posts
 			if len(list_extend) < posts_limit:
@@ -111,7 +110,7 @@ def api_request(endpoint, apiType):
 			if apiType == 'purchased' or apiType == 'subscriptions':
 				getParams['offset'] = str(int(getParams['offset']) + posts_limit)
 			else:
-				getParams['afterPublishTime'] = list_extend[len(list_extend)-1]['postedAtPrecise']
+				getParams['afterPublishTime'] = list_extend[-1]['postedAtPrecise']
 	return list_base
 
 
