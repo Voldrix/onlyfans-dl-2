@@ -70,7 +70,11 @@ def api_request(endpoint, apiType):
 	if apiType == 'messages':
 		getParams['order'] = "desc"
 	if apiType == 'subscriptions':
+		getParams['type'] = 'all'
+	if apiType == 'active_subscriptions':
 		getParams['type'] = 'active'
+	if apiType == 'all_subscriptions':
+		getParams['type'] = 'all'
 	if MAX_AGE and apiType != 'messages' and apiType != 'purchased' and apiType != 'subscriptions': #Cannot be limited by age
 		getParams['afterPublishTime'] = str(MAX_AGE) + ".000000"
 		age = " age " + str(showAge(getParams['afterPublishTime']))
@@ -186,7 +190,7 @@ def download_media(media, subtype, postdate, album = ''):
 
 
 def get_content(MEDIATYPE, API_LOCATION):
-	posts = api_request(API_LOCATION, MEDIATYPE)
+	posts = api_request(apiType=MEDIATYPE, endpoint=API_LOCATION)
 	if "error" in posts:
 		print("\nERROR: " + API_LOCATION + " :: " + posts["error"]["message"])
 	if MEDIATYPE == "messages":
@@ -245,7 +249,7 @@ if __name__ == "__main__":
 	if PROFILE_LIST[0] == "all":
 		PROFILE_LIST = get_subscriptions()
 
-	if len(PROFILE_LIST) < 1:
+	if not len(PROFILE_LIST) < 1:
 		for PROFILE in PROFILE_LIST:
 			if PROFILE in ByPass:
 				if VERBOSITY > 0:
