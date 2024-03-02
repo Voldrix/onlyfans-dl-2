@@ -70,8 +70,6 @@ def api_request(endpoint, apiType):
 	if apiType == 'messages':
 		getParams['order'] = "desc"
 	if apiType == 'subscriptions':
-		getParams['type'] = 'all'
-	if apiType == 'active_subscriptions':
 		getParams['type'] = 'active'
 	if apiType == 'all_subscriptions':
 		getParams['type'] = 'all'
@@ -133,6 +131,12 @@ def get_subscriptions():
 		return
 	return [row['username'] for row in subs]
 
+def get_all_subscriptions():
+	subs = api_request("/subscriptions/subscribes", "all_subscriptions")
+	if "error" in subs:
+		print("\nSUBSCRIPTIONS ERROR: " + subs["error"]["message"])
+		return
+	return [row['username'] for row in subs]
 
 def download_media(media, subtype, postdate, album = ''):
 	filename = postdate + "_" + str(media["id"])
@@ -248,6 +252,9 @@ if __name__ == "__main__":
 
 	if PROFILE_LIST[0] == "all":
 		PROFILE_LIST = get_subscriptions()
+
+	if PROFILE_LIST[0] == "all_subs":
+		PROFILE_LIST = get_all_subscriptions()
 
 	if not len(PROFILE_LIST) < 1:
 		for PROFILE in PROFILE_LIST:
