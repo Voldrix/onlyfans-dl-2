@@ -9,6 +9,8 @@ Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg)
 
 #### Requires
 Requires Python3 and 'requests': `python -m pip install requests`
+or
+Using pip directly: `pip -r install requirements.txt`
 
 ## Features
 * Choose what type of content to download (photos, videos, posts, stories, messages, purchases, archived)
@@ -21,7 +23,7 @@ Requires Python3 and 'requests': `python -m pip install requests`
 First make sure to set your session variables in the script and configure your options.
 
 `./onlyfans-dl.py <profiles / all> <max age (optional)>`
-* `<profiles>` - the usernames of profiles to download. Use "all" to get all currently subscribed profiles
+* `<profiles>` - the usernames of profiles to download. Use "all" to get all currently subscribed profiles. With "all_subs" even inactive subs and there chats getting pulled.
 * `<max age>` - Optional: Only get posts from the last &lt;integer&gt; days (Messages/Paid not affected)
   * `max age = 0` - sets max age to latest date from the filenames for each profile individually
 
@@ -40,7 +42,7 @@ You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HT
   - Click __Headers__ sub-tab (default)
   - Click on one of the JSON elements (may need to refresh page) and look under __request headers__ on the right
 
-There are variables for each of these values at the top of the script. Make sure to update them every time you login or your browser updates.
+Those settings need to be set in the configuration.py. Duplicate configuration-example.py and set the variables accordingly.
 
 #### ToDo
 A post with a single photo and video shouldn't be considered an album.\
