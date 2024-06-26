@@ -11,7 +11,7 @@ from telethon.tl.functions.messages import EditMessageRequest, UpdatePinnedMessa
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, API_ID, API_HASH, CACHE_SIZE_LIMIT, update_config, delete_media_from_server
 import aiohttp
 
-# path to main script
+# Path to the main script
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
 
 logging.basicConfig(level=logging.INFO)
@@ -19,14 +19,32 @@ logger = logging.getLogger(__name__)
 
 client = TelegramClient('bot', API_ID, API_HASH).start(bot_token=TELEGRAM_BOT_TOKEN)
 
-TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024  # 2 ГБ
+TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024  # 2 GB
 TEXT_MESSAGES = []
 USER_MESSAGES = []
 processes = {}
 
-LAST_MESSAGE_CONTENT = {}  # keep last message content
+LAST_MESSAGE_CONTENT = {}  # store the last content of messages
+
+# Load sent files from sent_files.txt
+def load_sent_files(profile_dir):
+    sent_files = set()
+    sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
+    if os.path.exists(sent_files_path):
+        with open(sent_files_path, 'r') as f:
+            for line in f:
+                sent_files.add(line.strip())
+    return sent_files
+
+# Save sent files to sent_files.txt
+def save_sent_file(profile_dir, file_name):
+    sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
+    with open(sent_files_path, 'a') as f:
+        f.write(file_name + '\n')
 
 async def send_file_and_replace_with_empty(chat_id, file_path, tag):
+    if 'sent_files.txt' in file_path:
+        return
     file_size = os.path.getsize(file_path)
     if file_size > TELEGRAM_FILE_SIZE_LIMIT:
         msg = await client.send_message(chat_id, f"File {os.path.basename(file_path)} is too large ({file_size / (1024 * 1024):.2f} MB) and won't be sent. {tag}")
@@ -35,7 +53,8 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         await client.send_file(chat_id, file_path, caption=tag)
         if delete_media_from_server:
             with open(file_path, 'w') as f:
-                pass  # open in write mode to make file empty
+                pass  # Open in write mode to make file empty
+
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -69,10 +88,14 @@ async def fetch_url(session, url, path):
                     break
                 f.write(chunk)
 
-async def process_file(file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock):
+async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock):
     try:
         # get media type and data
         file_name = os.path.basename(file_path)
+        sent_files = load_sent_files(profile_dir)
+        if file_name in sent_files:
+            return
+
         if file_name.endswith(('jpg', 'jpeg', 'png')):
             media_type = 'photo'
         elif file_name.endswith('mp4'):
@@ -89,7 +112,9 @@ async def process_file(file_path, chat_id, tag, pinned_message_id, remaining_fil
 
         await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
 
-        # decrease counter of remain media files
+        save_sent_file(profile_dir, file_name)
+
+        # decrease counter of remaining media files
         async with lock:
             remaining_files_ref[0] -= 1
             message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
@@ -103,6 +128,7 @@ async def process_file(file_path, chat_id, tag, pinned_message_id, remaining_fil
         pass
 
 async def download_and_send_media(username, chat_id, tag, pinned_message_id):
+    profile_dir = username
     new_files = []
     total_files = 0
     tasks = []
@@ -117,16 +143,21 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id):
         if output:
             logger.info(output)
             if "Downloaded" in output and "new" in output:
-                for dirpath, _, filenames in os.walk(username):
+                for dirpath, _, filenames in os.walk(profile_dir):
                     for filename in filenames:
                         file_path = os.path.join(dirpath, filename)
-                        if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and file_path not in new_files:
+                        if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and file_path not in new_files and 'sent_files.txt' not in file_path:
                             new_files.append(file_path)
                             total_files += 1
 
     process.stdout.close()
     process.stderr.close()
     del processes[chat_id]
+
+    # Filter out already sent files
+    sent_files = load_sent_files(profile_dir)
+    new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
+    total_files = len(new_files)
 
     if not new_files:
         msg = await client.send_message(chat_id, f"No new photos or videos found for this user. {tag}")
@@ -144,16 +175,17 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id):
     TEXT_MESSAGES.append(download_complete_msg.id)
 
     remaining_files = [total_files]  # use list for changing object
-    lock = asyncio.Lock()  # create object Lock for synchronisation
+    lock = asyncio.Lock()  # create object Lock for synchronization
 
     for file_path in new_files:
-        tasks.append(process_file(file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
+        tasks.append(process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
 
     await asyncio.gather(*tasks)
 
     # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
+
 
 async def handle_flood_wait_error(event, wait_time):
     msg = await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
