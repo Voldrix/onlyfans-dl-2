@@ -32,8 +32,8 @@ To use in command line
   * `max age = 0` - sets max age to latest date from the filenames for each profile individually
 
 To use with Telegram Bot:
-`python3 telegram_bot.py`
-Notes: Telegram API not allow fast messeage flood, so telethon can't send all files at once. If you see in pinned message "Remaining files to send: XXX (not 0)" - just rerun /get XXX command.
+`python3 telegram_bot.py` \
+**Notes**: Telegram API not allow fast messeage flood, so telethon can't send all files at once. If you see in pinned message "Remaining files to send: XXX (not 0)" - just rerun /get XXX command.
 
 ## Session Variables
 You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HTTP header, and **user-id**. Here's how to get them
