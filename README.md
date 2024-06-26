@@ -1,4 +1,4 @@
-# OnlyFans Profile Downloader / Archiver v2
+# OnlyFans Profile Downloader / Archiver v3
 This tool downloads all photos/videos from OnlyFans profiles, creating a local archive.\
 You must be subscribed to the profile to download their content.
 
