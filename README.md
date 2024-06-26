@@ -26,7 +26,7 @@ First make sure to set your session variables in the `config.py` script and conf
 To use in command line
 `python3 onlyfans-dl.py <--help/ --list / profiles / all> <max age (optional)>`
 * `<--help>` - print help message
-* `<--list>` - print ol usernames of profiles you are subscribed to. 
+* `<--list>` - print list with usernames of profiles you are subscribed to. 
 * `<profiles>` - the usernames of profiles to download. Use "all" to get all currently subscribed profiles
 * `<max age>` - Optional: Only get posts from the last &lt;integer&gt; days (Messages/Paid not affected)
   * `max age = 0` - sets max age to latest date from the filenames for each profile individually
