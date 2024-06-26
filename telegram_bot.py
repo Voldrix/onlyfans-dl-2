@@ -11,7 +11,7 @@ from telethon.tl.functions.messages import EditMessageRequest, UpdatePinnedMessa
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, API_ID, API_HASH, CACHE_SIZE_LIMIT, update_config, delete_media_from_server
 import aiohttp
 
-# Путь к основному скрипту
+# path to main script
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
 
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +24,7 @@ TEXT_MESSAGES = []
 USER_MESSAGES = []
 processes = {}
 
-LAST_MESSAGE_CONTENT = {}  # хранить последнее содержимое сообщений
+LAST_MESSAGE_CONTENT = {}  # keep last message content
 
 async def send_file_and_replace_with_empty(chat_id, file_path, tag):
     file_size = os.path.getsize(file_path)
@@ -35,7 +35,7 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         await client.send_file(chat_id, file_path, caption=tag)
         if delete_media_from_server:
             with open(file_path, 'w') as f:
-                pass  # Открываем файл в режиме записи, что очищает его содержимое
+                pass  # open in write mode to make file empty
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -71,7 +71,7 @@ async def fetch_url(session, url, path):
 
 async def process_file(file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock):
     try:
-        # Определяем тип медиа и дату поста
+        # get media type and data
         file_name = os.path.basename(file_path)
         if file_name.endswith(('jpg', 'jpeg', 'png')):
             media_type = 'photo'
@@ -89,7 +89,7 @@ async def process_file(file_path, chat_id, tag, pinned_message_id, remaining_fil
 
         await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
 
-        # Уменьшение счетчика оставшихся файлов
+        # decrease counter of remain media files
         async with lock:
             remaining_files_ref[0] -= 1
             message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
@@ -143,15 +143,15 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id):
     download_complete_msg = await client.send_message(chat_id, f"Download complete. {tag}")
     TEXT_MESSAGES.append(download_complete_msg.id)
 
-    remaining_files = [total_files]  # Используем список, чтобы передавать изменяемый объект
-    lock = asyncio.Lock()  # Создаем объект Lock для синхронизации
+    remaining_files = [total_files]  # use list for changing object
+    lock = asyncio.Lock()  # create object Lock for synchronisation
 
     for file_path in new_files:
         tasks.append(process_file(file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
 
     await asyncio.gather(*tasks)
 
-    # Отправляем финальное сообщение о завершении загрузки
+    # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
 
@@ -183,7 +183,7 @@ async def list_command(event):
                 msg = await event.respond("No active subscriptions found.")
                 USER_MESSAGES.append(msg.id)
                 return
-            # Выводим имена в моноширинном формате markdown с нумерацией
+            # print subscription list with numbers and markdown format
             markdown_subs = ''.join([f"{i+1}. `{sub.strip()}`\n" for i, sub in enumerate(subscriptions)])
             msg = await event.respond(markdown_subs, parse_mode='md')
             USER_MESSAGES.append(msg.id)
@@ -329,17 +329,17 @@ async def clear_command(event):
     if event.sender_id == TELEGRAM_USER_ID:
         messages_to_delete = []
 
-        # Добавляем идентификатор сообщения команды clear
+        # add identificator to clear this message
         messages_to_delete.append(event.id)
 
-        # Добавляем все сообщения, которые бот сохранил ранее
+        # get all tracked messages
         messages_to_delete.extend(TEXT_MESSAGES)
         messages_to_delete.extend(USER_MESSAGES)
 
-        # Удаление сообщений
+        # delete traced messages
         await client.delete_messages(event.chat_id, messages_to_delete)
 
-        # Очистка списка сохраненных сообщений
+        # clear tracked messages ID's
         TEXT_MESSAGES.clear()
         USER_MESSAGES.clear()
 
@@ -399,7 +399,7 @@ async def del_command(event):
         USER_MESSAGES.append(msg.id)
         return
 
-    # Удаление папки пользователя
+    # delete user folder from server
     if os.path.exists(username):
         subprocess.call(['rm', '-rf', username])
         msg = await event.respond(f"User directory {username} has been deleted. {tag}")
