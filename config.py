@@ -35,10 +35,10 @@ PURCHASED = True
 # Telegram Bot Token
 TELEGRAM_BOT_TOKEN = "xxx"
 
-# Your Telegram ID
+# Your Telegram ID (to restrict access to bot only from your account)
 TELEGRAM_USER_ID = xxx
 
-# Your Telegram API app
+# Your Telegram API app (because standard BotFather bot has 50mb limit of sended files)
 API_ID = 'xxx'
 API_HASH = 'xxx'
 
