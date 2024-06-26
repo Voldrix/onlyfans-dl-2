@@ -1,11 +1,13 @@
 # OnlyFans Profile Downloader / Archiver v3 ([Voldrix](https://github.com/Voldrix/onlyfans-dl-2) fork)
 This tool downloads all photos/videos from OnlyFans profiles, creating a local archive.\
-You must be subscribed to the profile to download their content.
+You must be subscribed to the profile to download their content.\
++ Telegram Bot to interact with script via messanger's interface 
 
 onlyfans-dl will create a directory named after the profile in the current working directory.\
 A subdirectory structure will be built depending on the options set.\
 Any existing media will be skipped, not redownloaded.\
-Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg)
+Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
+telegram_bot will start onlyfans-dl from Telegram and send you downloaded media files.
 
 #### Requires
 Requires Python3 and modules: `pip install -r requirements.txt`
@@ -16,6 +18,7 @@ Requires Python3 and modules: `pip install -r requirements.txt`
 * Choose to sort posts with more than one photo into "albums" (subfolders)
 * Download everything, or only the last &lt;integer&gt; days of content
 * Specify multiple profiles at once or use "all" keyword to get subscriptions dynamically
+* You Can use Telegram Bot to interract with script and get media files via messages
 
 ## Usage
 First make sure to set your session variables in the `config.py` script and configure your options.
