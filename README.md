@@ -1,4 +1,4 @@
-# OnlyFans Profile Downloader / Archiver v3
+# OnlyFans Profile Downloader / Archiver v3 ([Voldrix](https://github.com/Voldrix/onlyfans-dl-2) fork)
 This tool downloads all photos/videos from OnlyFans profiles, creating a local archive.\
 You must be subscribed to the profile to download their content.
 
@@ -8,7 +8,7 @@ Any existing media will be skipped, not redownloaded.\
 Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg)
 
 #### Requires
-Requires Python3 and 'requests': `python -m pip install requests`
+Requires Python3 and modules: `pip install -r requirements.txt`
 
 ## Features
 * Choose what type of content to download (photos, videos, posts, stories, messages, purchases, archived)
@@ -18,12 +18,18 @@ Requires Python3 and 'requests': `python -m pip install requests`
 * Specify multiple profiles at once or use "all" keyword to get subscriptions dynamically
 
 ## Usage
-First make sure to set your session variables in the script and configure your options.
+First make sure to set your session variables in the `config.py` script and configure your options.
 
-`./onlyfans-dl.py <profiles / all> <max age (optional)>`
+To use in command line
+`python3 onlyfans-dl.py <--help/ --list / profiles / all> <max age (optional)>`
+* `<--help>` - print help message
+* `<--list>` - print ol usernames of profiles you are subscribed to. 
 * `<profiles>` - the usernames of profiles to download. Use "all" to get all currently subscribed profiles
 * `<max age>` - Optional: Only get posts from the last &lt;integer&gt; days (Messages/Paid not affected)
   * `max age = 0` - sets max age to latest date from the filenames for each profile individually
+
+To use with Telegram Bot:
+`python3 telegram_bot.py`
 
 ## Session Variables
 You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HTTP header, and **user-id**. Here's how to get them
