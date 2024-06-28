@@ -1,5 +1,7 @@
-telethon
-aiohttp
-requests
-pillow
-moviepy
+aiogram==2.13
+telethon==1.21.1
+aiohttp==3.8.1
+Pillow==8.4.0
+moviepy==1.0.3
+requests==2.26.0
+
