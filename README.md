@@ -9,8 +9,54 @@ Any existing media will be skipped, not redownloaded.\
 Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
 `telegram_bot.py` will start onlyfans-dl from Telegram and send you downloaded media files.
 
-#### Requires
-Requires Python3 and modules: `pip install -r requirements.txt`
+### Installation Instructions
+
+To set up the environment and install necessary dependencies, follow these steps:
+
+1. **Update the package list:**
+
+    ```bash
+    sudo apt-get update
+    ```
+
+2. **Install `ffmpeg`:**
+
+    ```bash
+    sudo apt-get install -y ffmpeg
+    ```
+
+3. **Install `python3-venv` for creating virtual environments:**
+
+    ```bash
+    sudo apt-get install -y python3-venv
+    ```
+
+4. **Create a virtual environment (if not already created):**
+
+    ```bash
+    python3 -m venv myenv
+    ```
+
+5. **Activate the virtual environment:**
+
+    ```bash
+    source myenv/bin/activate
+    ```
+
+6. **Upgrade `pip`:**
+
+    ```bash
+    pip install --upgrade pip
+    ```
+
+7. **Install dependencies from `requirements.txt`:**
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+These commands will help you install all the necessary packages and programs for the correct operation of your script. Make sure you are working in the activated virtual environment to avoid conflicts with system packages.
+
 
 ## Features
 * Choose what type of content to download (photos, videos, posts, stories, messages, purchases, archived)
