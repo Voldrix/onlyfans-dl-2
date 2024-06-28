@@ -251,7 +251,7 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
 async def load_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):
@@ -346,7 +346,7 @@ async def check_command(event):
 async def erase_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         msg = await event.respond("Usage: /erase <username or subscription number>")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/erase (.+)'))
 async def erase_command(event):
@@ -420,28 +420,29 @@ async def list_command(event):
     stdout, stderr = run_script(['--list'])
     if stderr:
         msg = await event.respond(f"Error: {stderr}")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
     else:
         try:
             with open("subscriptions_list.txt", "r") as f:
                 subscriptions = f.readlines()
             if not subscriptions:
                 msg = await event.respond("No active subscriptions found.")
-                USER_MESSAGES.append(msg.id)
+                TEXT_MESSAGES.append(msg.id)
                 return
             # print subscription list with numbers and markdown format
             markdown_subs = ''.join([f"{i+1}. `{sub.strip()}`\n" for i, sub in enumerate(subscriptions)])
             msg = await event.respond(markdown_subs, parse_mode='md')
-            USER_MESSAGES.append(msg.id)
+            TEXT_MESSAGES.append(msg.id)
         except FileNotFoundError:
             msg = await event.respond("Error: subscriptions_list.txt not found.")
-            USER_MESSAGES.append(msg.id)
+            TEXT_MESSAGES.append(msg.id)
+
 
 @client.on(events.NewMessage(pattern='/get$'))
 async def get_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         msg = await event.respond("Usage: /get <username or subscription number> <max_age (optional)>")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
@@ -580,8 +581,12 @@ async def clear_command(event):
         messages_to_delete.append(event.id)
 
         # get all tracked messages
-        messages_to_delete.extend(TEXT_MESSAGES)
-        messages_to_delete.extend(USER_MESSAGES)
+        for msg_id in TEXT_MESSAGES:
+            message = await client.get_messages(event.chat_id, ids=msg_id)
+            if message and not message.media:  # Check if the message does not contain media
+                messages_to_delete.append(msg_id)
+        for msg_id in USER_MESSAGES:
+            messages_to_delete.append(msg_id)
 
         # delete traced messages
         await client.delete_messages(event.chat_id, messages_to_delete)
@@ -593,7 +598,10 @@ async def clear_command(event):
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        USER_MESSAGES.append(event.id)
+        if not event.message.media:  # Check if the message does not contain media
+            USER_MESSAGES.append(event.id)
+        TEXT_MESSAGES.append(event.id)  # Track all messages
+
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
@@ -612,13 +620,13 @@ async def stop_command(event):
 async def del_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         msg = await event.respond("Usage: /del <username or subscription number>")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/del (.+)'))
 async def del_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
         msg = await event.respond("Unauthorized access.")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
         logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
@@ -639,21 +647,21 @@ async def del_command(event):
 
         if username not in [sub.strip() for sub in subscriptions]:
             msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
-            USER_MESSAGES.append(msg.id)
+            TEXT_MESSAGES.append(msg.id)
             return
     except (IndexError, FileNotFoundError):
         msg = await event.respond("Invalid subscription number or subscriptions list not found.")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
         return
 
     # delete user folder from server
     if os.path.exists(username):
         subprocess.call(['rm', '-rf', username])
         msg = await event.respond(f"User directory {username} has been deleted. {tag}")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
     else:
         msg = await event.respond(f"User directory {username} not found. {tag}")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
 
 async def setup_bot_commands():
     commands = [
