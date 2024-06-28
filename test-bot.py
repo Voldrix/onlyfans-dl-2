@@ -313,7 +313,7 @@ async def check_command(event):
         return
 
     try:
-        response = ""
+        response = "**__profile (sent/total)__**\n"  # Добавление шапки таблицы
         for profile in os.listdir('.'):
             profile_dir = os.path.join('.', profile)
             if os.path.isdir(profile_dir) and not profile.startswith('.') and profile != '__pycache__':
@@ -321,7 +321,7 @@ async def check_command(event):
                 total_files = sum([len(files) for _, _, files in os.walk(profile_dir) if not files[0].endswith('.part')])
                 response += f"{profile} ({len(sent_files)}/{total_files})\n"
 
-        if not response:
+        if not response.strip():
             msg = await event.respond("No downloaded profiles found.")
             USER_MESSAGES.append(msg.id)
         else:
