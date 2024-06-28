@@ -1,6 +1,7 @@
 import os
 import re
 import math
+import time
 import asyncio
 import subprocess
 import requests
@@ -23,6 +24,7 @@ aiogram_bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher(aiogram_bot)
 
 current_split_process = None
+last_flood_wait_message_time = None
 
 # Path to the main script
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
@@ -66,10 +68,10 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         while attempts < 5:
             try:
                 msg = await client.send_file(chat_id, file_path, caption=tag)
-                TEXT_MESSAGES.append(msg.id)  # Save message ID
+                USER_MESSAGES.append(msg.id)  # Сохраняем ID сообщения в USER_MESSAGES, а не в TEXT_MESSAGES
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
-                        pass  # Open in write mode to make file empty
+                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
                 break
             except FloodWaitError as e:
                 await handle_flood_wait(chat_id, e.seconds)
@@ -77,9 +79,11 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
             except ValueError as e:
                 logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
                 attempts += 1
-                await asyncio.sleep(5)  # Wait before retrying
+                await asyncio.sleep(5)  # Ждем перед повторной попыткой
         else:
             await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
+
+
 
 def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
     global current_split_process
@@ -123,18 +127,19 @@ async def split_and_send_large_file(chat_id, file_path, tag):
         await send_file_and_replace_with_empty(chat_id, part_path, f"{tag} Part {i + 1}")
         os.remove(part_path)  # Remove part file after sending
 
-    # Replace original large file with an empty file or remove it
     if delete_media_from_server:
         with open(file_path, 'w') as f:
-            pass  # Open in write mode to make file empty
+            pass  # Открываем в режиме записи, чтобы сделать файл пустым
     else:
-        os.remove(file_path)  # Remove the original large file
+        os.remove(file_path)  # Удаляем оригинальный большой файл
+
 
     current_split_process = None  # Reset the process variable
 
 
 
-async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id):
+async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock):
+
     try:
         await split_and_send_large_file(chat_id, file_path, tag)
         if delete_media_from_server:
@@ -252,7 +257,7 @@ async def download_and_send_large_media(username, chat_id, tag, pinned_message_i
     remaining_files = [len(large_files)]  # Используйте список для изменяемого объекта
 
     for file_path in large_files:
-        tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id))
+        tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
 
     await asyncio.gather(*tasks)
 
@@ -656,19 +661,25 @@ def send_fallback_message(chat_id, message):
         logger.error(f"Failed to send fallback message: {response.text}")
 
 async def handle_flood_wait(chat_id, wait_time):
-    message = f"FloodWaitError: Please wait for {wait_time} seconds."
-    try:
-        await aiogram_bot.send_message(chat_id, message)
-    except aiogram_exceptions.BotBlocked:
-        logger.error(f"Target [ID:{chat_id}]: blocked by user")
-    except aiogram_exceptions.ChatNotFound:
-        logger.error(f"Target [ID:{chat_id}]: invalid user ID")
-    except aiogram_exceptions.RetryAfter as e:
-        logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
-        await asyncio.sleep(e.timeout)
-        return await handle_flood_wait(chat_id, wait_time)
-    except aiogram_exceptions.TelegramAPIError:
-        logger.exception(f"Target [ID:{chat_id}]: failed")
+    global last_flood_wait_message_time
+    current_time = time.time()
+
+    if last_flood_wait_message_time is None or current_time - last_flood_wait_message_time > 60:
+        last_flood_wait_message_time = current_time
+        message = f"FloodWaitError: Please wait for {wait_time} seconds."
+        try:
+            msg = await aiogram_bot.send_message(chat_id, message)
+            TEXT_MESSAGES.append(msg.message_id)
+        except aiogram_exceptions.BotBlocked:
+            logger.error(f"Target [ID:{chat_id}]: blocked by user")
+        except aiogram_exceptions.ChatNotFound:
+            logger.error(f"Target [ID:{chat_id}]: invalid user ID")
+        except aiogram_exceptions.RetryAfter as e:
+            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
+            await asyncio.sleep(e.timeout)
+            return await handle_flood_wait(chat_id, wait_time)
+        except aiogram_exceptions.TelegramAPIError:
+            logger.exception(f"Target [ID:{chat_id}]: failed")
     await asyncio.sleep(wait_time)
 
 
@@ -841,33 +852,40 @@ async def clear_command(event):
     if event.sender_id == TELEGRAM_USER_ID:
         messages_to_delete = []
 
-        # add identificator to clear this message
+        # Добавляем идентификатор, чтобы удалить это сообщение
         messages_to_delete.append(event.id)
 
-        # get all tracked messages
+        # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES
         for msg_id in TEXT_MESSAGES:
-            messages_to_delete.append(msg_id)
-        for msg_id in USER_MESSAGES:
-            messages_to_delete.append(msg_id)
+            try:
+                message = await client.get_messages(event.chat_id, ids=msg_id)
+                if message and not message.media:  # Удаляем только текстовые сообщения
+                    messages_to_delete.append(msg_id)
+            except:
+                continue
 
-        # delete traced messages
+        # Удаляем отслеживаемые сообщения
         try:
             await client.delete_messages(event.chat_id, messages_to_delete)
         except FloodWaitError as e:
             await handle_flood_wait(event.chat_id, e.seconds)
 
-        # clear tracked messages ID's
+        # Очищаем отслеживаемые ID сообщений
         TEXT_MESSAGES.clear()
         USER_MESSAGES.clear()
-
+        global last_flood_wait_message_time
+        last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
 
 
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        if not event.message.media:  # Check if the message does not contain media
+        if not event.message.media:  # Проверяем, что сообщение не содержит медиа
             USER_MESSAGES.append(event.id)
-        TEXT_MESSAGES.append(event.id)  # Track all messages
+            TEXT_MESSAGES.append(event.id)  # Отслеживаем только текстовые сообщения
+        else:
+            USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
+
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
