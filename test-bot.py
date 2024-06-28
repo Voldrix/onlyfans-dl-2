@@ -672,17 +672,17 @@ async def del_command(event):
 async def setup_bot_commands():
     commands = [
         BotCommand(command='list', description='Show list of active subscriptions'),
-        BotCommand(command='get', description='Download media from username or subscription number'),
+        BotCommand(command='get', description='Download media and send to this chat'),
         BotCommand(command='load', description='Download media to server without sending'),
-        BotCommand(command='check', description='Check downloaded profiles and files'),
-        BotCommand(command='erase', description='Erase messages with a specific hashtag'),
+        BotCommand(command='check', description='Check downloaded profiles and media count'),
+        BotCommand(command='erase', description='Erase chat messages with a specific hashtag'),
+        BotCommand(command='del', description='Delete profile folder from server'),
+        BotCommand(command='clear', description='Clear non-media messages in chat'),
+        BotCommand(command='stop', description='Stop the download process'),
         BotCommand(command='user_id', description='Update USER_ID'),
         BotCommand(command='user_agent', description='Update USER_AGENT'),
         BotCommand(command='x_bc', description='Update X_BC'),
-        BotCommand(command='sess_cookie', description='Update SESS_COOKIE'),
-        BotCommand(command='clear', description='Clear non-media messages'),
-        BotCommand(command='stop', description='Stop the download process'),
-        BotCommand(command='del', description='Delete user folder by username or subscription number')
+        BotCommand(command='sess_cookie', description='Update SESS_COOKIE')
     ]
     await client(SetBotCommandsRequest(scope=BotCommandScopeDefault(), lang_code='', commands=commands))
 
