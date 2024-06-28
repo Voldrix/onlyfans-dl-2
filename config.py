@@ -45,8 +45,9 @@ API_HASH = 'xxx'
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
 
-# Maximum count of parallel downloads from OnlyFans site
+# Maximum count of parallel downloads from OnlyFans site and uploads to telegram
 MAX_PARALLEL_DOWNLOADS = 400 
+MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  # or False
