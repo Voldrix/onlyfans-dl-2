@@ -316,9 +316,9 @@ async def check_command(event):
         response = ""
         for profile in os.listdir('.'):
             profile_dir = os.path.join('.', profile)
-            if os.path.isdir(profile_dir) and not profile.startswith('.'):
+            if os.path.isdir(profile_dir) and not profile.startswith('.') and profile != '__pycache__':
                 sent_files = load_sent_files(profile_dir)
-                total_files = sum([len(files) for _, _, files in os.walk(profile_dir)]) - len(sent_files)
+                total_files = sum([len(files) for _, _, files in os.walk(profile_dir) if not files[0].endswith('.part')])
                 response += f"{profile} ({len(sent_files)}/{total_files})\n"
 
         if not response:
