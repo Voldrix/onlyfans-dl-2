@@ -7,9 +7,11 @@ from telethon.errors.rpcerrorlist import MessageNotModifiedError, FloodWaitError
 from telethon import TelegramClient, events
 from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.tl.functions.bots import SetBotCommandsRequest
-from telethon.tl.functions.messages import EditMessageRequest, UpdatePinnedMessageRequest
+from telethon.tl.functions.messages import EditMessageRequest, UpdatePinnedMessageRequest, DeleteMessagesRequest
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, API_ID, API_HASH, CACHE_SIZE_LIMIT, update_config, delete_media_from_server
 import aiohttp
+from PIL import Image
+from moviepy.editor import VideoFileClip
 
 # Path to the main script
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
@@ -50,11 +52,22 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         msg = await client.send_message(chat_id, f"File {os.path.basename(file_path)} is too large ({file_size / (1024 * 1024):.2f} MB) and won't be sent. {tag}")
         TEXT_MESSAGES.append(msg.id)
     elif file_size > 0:
-        await client.send_file(chat_id, file_path, caption=tag)
-        if delete_media_from_server:
-            with open(file_path, 'w') as f:
-                pass  # Open in write mode to make file empty
-
+        attempts = 0
+        while attempts < 5:
+            try:
+                msg = await client.send_file(chat_id, file_path, caption=tag)
+                TEXT_MESSAGES.append(msg.id)  # Save message ID
+                if delete_media_from_server:
+                    with open(file_path, 'w') as f:
+                        pass  # Open in write mode to make file empty
+                break
+            except ValueError as e:
+                logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
+                attempts += 1
+                await asyncio.sleep(5)  # Wait before retrying
+        else:
+            msg = await client.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
+            TEXT_MESSAGES.append(msg.id)
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -110,9 +123,11 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
         post_date = file_name.split('_')[0]
         full_tag = f"{tag} #{media_type} {post_date}"
 
-        await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
-
-        save_sent_file(profile_dir, file_name)
+        if is_valid_file(file_path):
+            await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
+            save_sent_file(profile_dir, file_name)
+        else:
+            os.remove(file_path)
 
         # decrease counter of remaining media files
         async with lock:
@@ -127,13 +142,45 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
     except MessageNotModifiedError:
         pass
 
-async def download_and_send_media(username, chat_id, tag, pinned_message_id):
+def is_valid_file(file_path):
+    if file_path.endswith(('jpg', 'jpeg', 'png')):
+        try:
+            with Image.open(file_path) as img:
+                img.verify()
+            return True
+        except Exception as e:
+            logger.error(f"Invalid image file {file_path}: {e}")
+            return False
+    elif file_path.endswith('mp4'):
+        try:
+            with VideoFileClip(file_path) as video:
+                return video.duration > 1
+        except Exception as e:
+            logger.error(f"Invalid video file {file_path}: {e}")
+            return False
+    return True
+    
+def estimate_download_size(profile_dir):
+    total_size = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if file_path.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
+                total_size += os.path.getsize(file_path)
+    return total_size
+
+async def download_and_send_media(username, chat_id, tag, pinned_message_id, max_age):
     profile_dir = username
     new_files = []
     total_files = 0
     tasks = []
 
-    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    estimated_size = estimate_download_size(profile_dir)
+    if estimated_size > CACHE_SIZE_LIMIT:
+        await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
+        return
+
+    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     processes[chat_id] = process
 
     while True:
@@ -187,6 +234,194 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id):
     TEXT_MESSAGES.append(upload_complete_msg.id)
 
 
+async def download_media_without_sending(username, chat_id, tag, max_age):
+    profile_dir = username
+    initial_file_count = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        initial_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
+
+    estimated_size = estimate_download_size(profile_dir)
+    if estimated_size > CACHE_SIZE_LIMIT:
+        await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
+        return
+
+    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    processes[chat_id] = process
+
+    while True:
+        output = process.stdout.readline().strip()
+        if not output and process.poll() is not None:
+            break
+        if output:
+            logger.info(output)
+
+    process.stdout.close()
+    process.stderr.close()
+    del processes[chat_id]
+
+    final_file_count = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        final_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
+
+    total_files_downloaded = final_file_count - initial_file_count
+    msg = await client.send_message(chat_id, f"Download complete. {total_files_downloaded} files downloaded for {username}. {tag}")
+    TEXT_MESSAGES.append(msg.id)
+
+
+@client.on(events.NewMessage(pattern='/load$'))
+async def load_command_usage(event):
+    if event.sender_id == TELEGRAM_USER_ID:
+        msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
+        TEXT_MESSAGES.append(msg.id)
+
+@client.on(events.NewMessage(pattern='/load (.+)'))
+async def load_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+        return
+
+    args = event.pattern_match.group(1).strip().split()
+    target = args[0]
+    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+    tag = f"#{target}"
+
+    try:
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+            tag = f"#{username}"
+        else:
+            username = target
+            tag = f"#{target}"
+
+        if username not in [sub.strip() for sub in subscriptions]:
+            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
+            USER_MESSAGES.append(msg.id)
+            return
+    except (IndexError, FileNotFoundError):
+        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+        USER_MESSAGES.append(msg.id)
+        return
+
+    if not os.path.exists(username):
+        os.makedirs(username)
+        msg = await event.respond(f"User directory {username} not found. Starting a fresh download. {tag}")
+        USER_MESSAGES.append(msg.id)
+
+    try:
+        msg = await event.respond(f"Started downloading media to server for {username} {tag}")
+        TEXT_MESSAGES.append(msg.id)
+
+        await download_media_without_sending(username, event.chat_id, tag, max_age)
+    except FloodWaitError as e:
+        wait_time = e.seconds
+        await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
+
+@client.on(events.NewMessage(pattern='/check$'))
+async def check_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+        return
+
+    try:
+        header = "**__profile (sent/total)__**\n"
+        separator = "--------------------------\n"
+        response = header + separator  # Adding the header and separator to the response
+        
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+        
+        for profile in subscriptions:
+            profile = profile.strip()
+            profile_dir = os.path.join('.', profile)
+            if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
+                sent_files = load_sent_files(profile_dir)
+                total_files = 0
+                for root, _, files in os.walk(profile_dir):
+                    for file in files:
+                        if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
+                            total_files += 1
+                response += f"`{profile}` ({len(sent_files)}/**{total_files}**)\n"
+
+        if response.strip() == header + separator:
+            msg = await event.respond("No downloaded profiles found.")
+            USER_MESSAGES.append(msg.id)
+        else:
+            msg = await event.respond(response)
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        logger.error(f"Error checking profiles: {str(e)}")
+        msg = await event.respond("Error checking profiles.")
+        USER_MESSAGES.append(msg.id)
+
+@client.on(events.NewMessage(pattern='/erase$'))
+async def erase_command_usage(event):
+    if event.sender_id == TELEGRAM_USER_ID:
+        msg = await event.respond("Usage: /erase <username or subscription number>")
+        TEXT_MESSAGES.append(msg.id)
+
+@client.on(events.NewMessage(pattern='/erase (.+)'))
+async def erase_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+        return
+
+    target = event.pattern_match.group(1).strip()
+
+    try:
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+            tag = f"#{username}"
+        else:
+            username = target
+            tag = f"#{target}"
+
+        if username not in [sub.strip() for sub in subscriptions]:
+            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
+            USER_MESSAGES.append(msg.id)
+            return
+    except (IndexError, FileNotFoundError):
+        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+        USER_MESSAGES.append(msg.id)
+        return
+
+    message_ids_to_delete = []
+
+    for msg_id in TEXT_MESSAGES:
+        message = await client.get_messages(event.chat_id, ids=msg_id)
+        if message and f"#{username}" in message.message:
+            message_ids_to_delete.append(msg_id)
+
+    if message_ids_to_delete:
+        try:
+            await client.delete_messages(event.chat_id, message_ids_to_delete)
+            msg = await event.respond(f"All messages with tag #{username} have been erased.")
+            USER_MESSAGES.append(msg.id)
+        except Exception as e:
+            logger.error(f"Failed to delete messages: {str(e)}")
+            msg = await event.respond("Failed to delete messages.")
+            USER_MESSAGES.append(msg.id)
+    else:
+        msg = await event.respond(f"No messages with tag #{username} found.")
+        USER_MESSAGES.append(msg.id)
+
 async def handle_flood_wait_error(event, wait_time):
     msg = await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
     USER_MESSAGES.append(msg.id)
@@ -206,29 +441,29 @@ async def list_command(event):
     stdout, stderr = run_script(['--list'])
     if stderr:
         msg = await event.respond(f"Error: {stderr}")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
     else:
         try:
             with open("subscriptions_list.txt", "r") as f:
                 subscriptions = f.readlines()
             if not subscriptions:
                 msg = await event.respond("No active subscriptions found.")
-                USER_MESSAGES.append(msg.id)
+                TEXT_MESSAGES.append(msg.id)
                 return
             # print subscription list with numbers and markdown format
             markdown_subs = ''.join([f"{i+1}. `{sub.strip()}`\n" for i, sub in enumerate(subscriptions)])
             msg = await event.respond(markdown_subs, parse_mode='md')
-            USER_MESSAGES.append(msg.id)
+            TEXT_MESSAGES.append(msg.id)
         except FileNotFoundError:
             msg = await event.respond("Error: subscriptions_list.txt not found.")
-            USER_MESSAGES.append(msg.id)
+            TEXT_MESSAGES.append(msg.id)
 
 
 @client.on(events.NewMessage(pattern='/get$'))
 async def get_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /get <username or subscription number>")
-        USER_MESSAGES.append(msg.id)
+        msg = await event.respond("Usage: /get <username or subscription number> <max_age (optional)>")
+        TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
@@ -238,12 +473,15 @@ async def get_command(event):
         logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
-    target = event.pattern_match.group(1).strip()
+    args = event.pattern_match.group(1).strip().split()
+    target = args[0]
+    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+    tag = f"#{target}"
 
     try:
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
-        
+
         if target.isdigit():
             target_index = int(target) - 1
             if target_index < 0 or target_index >= len(subscriptions):
@@ -278,11 +516,10 @@ async def get_command(event):
             silent=True
         ))
 
-        await download_and_send_media(username, event.chat_id, tag, pinned_message_id)
+        await download_and_send_media(username, event.chat_id, tag, pinned_message_id, max_age)
     except FloodWaitError as e:
         wait_time = e.seconds
         await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
-
 
 @client.on(events.NewMessage(pattern='/user_id$'))
 async def user_id_command_usage(event):
@@ -365,8 +602,12 @@ async def clear_command(event):
         messages_to_delete.append(event.id)
 
         # get all tracked messages
-        messages_to_delete.extend(TEXT_MESSAGES)
-        messages_to_delete.extend(USER_MESSAGES)
+        for msg_id in TEXT_MESSAGES:
+            message = await client.get_messages(event.chat_id, ids=msg_id)
+            if message and not message.media:  # Check if the message does not contain media
+                messages_to_delete.append(msg_id)
+        for msg_id in USER_MESSAGES:
+            messages_to_delete.append(msg_id)
 
         # delete traced messages
         await client.delete_messages(event.chat_id, messages_to_delete)
@@ -378,7 +619,10 @@ async def clear_command(event):
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        USER_MESSAGES.append(event.id)
+        if not event.message.media:  # Check if the message does not contain media
+            USER_MESSAGES.append(event.id)
+        TEXT_MESSAGES.append(event.id)  # Track all messages
+
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
@@ -397,13 +641,13 @@ async def stop_command(event):
 async def del_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         msg = await event.respond("Usage: /del <username or subscription number>")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/del (.+)'))
 async def del_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
         msg = await event.respond("Unauthorized access.")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
         logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
@@ -413,7 +657,7 @@ async def del_command(event):
     try:
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
-        
+
         if target.isdigit():
             target_index = int(target) - 1
             if target_index < 0 or target_index >= len(subscriptions):
@@ -424,34 +668,36 @@ async def del_command(event):
 
         if username not in [sub.strip() for sub in subscriptions]:
             msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
-            USER_MESSAGES.append(msg.id)
+            TEXT_MESSAGES.append(msg.id)
             return
     except (IndexError, FileNotFoundError):
         msg = await event.respond("Invalid subscription number or subscriptions list not found.")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
         return
 
     # delete user folder from server
     if os.path.exists(username):
         subprocess.call(['rm', '-rf', username])
         msg = await event.respond(f"User directory {username} has been deleted. {tag}")
-        USER_MESSAGES.append(msg.id)
+        TEXT_MESSAGES.append(msg.id)
     else:
         msg = await event.respond(f"User directory {username} not found. {tag}")
-        USER_MESSAGES.append(msg.id)
-
+        TEXT_MESSAGES.append(msg.id)
 
 async def setup_bot_commands():
     commands = [
         BotCommand(command='list', description='Show list of active subscriptions'),
-        BotCommand(command='get', description='Download media from username or subscription number'),
+        BotCommand(command='get', description='Download media and send to this chat'),
+        BotCommand(command='load', description='Download media to server without sending'),
+        BotCommand(command='check', description='Check downloaded profiles and media count'),
+        BotCommand(command='erase', description='Erase chat messages with a specific hashtag'),
+        BotCommand(command='del', description='Delete profile folder from server'),
+        BotCommand(command='clear', description='Clear non-media messages in chat'),
+        BotCommand(command='stop', description='Stop the download process'),
         BotCommand(command='user_id', description='Update USER_ID'),
         BotCommand(command='user_agent', description='Update USER_AGENT'),
         BotCommand(command='x_bc', description='Update X_BC'),
-        BotCommand(command='sess_cookie', description='Update SESS_COOKIE'),
-        BotCommand(command='clear', description='Clear non-media messages'),
-        BotCommand(command='stop', description='Stop the download process'),
-        BotCommand(command='del', description='Delete user folder by username or subscription number')
+        BotCommand(command='sess_cookie', description='Update SESS_COOKIE')
     ]
     await client(SetBotCommandsRequest(scope=BotCommandScopeDefault(), lang_code='', commands=commands))
 

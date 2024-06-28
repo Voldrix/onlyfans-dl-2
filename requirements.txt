@@ -1,3 +1,5 @@
 telethon
 aiohttp
 requests
+pillow
+moviepy
