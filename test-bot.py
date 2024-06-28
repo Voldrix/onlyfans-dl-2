@@ -327,7 +327,7 @@ async def check_command(event):
                 total_files = 0
                 for root, _, files in os.walk(profile_dir):
                     for file in files:
-                        if file != 'sent_files.txt' and file.endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
+                        if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
                             total_files += 1
                 response += f"{profile} ({len(sent_files)}/{total_files})\n"
 
