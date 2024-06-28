@@ -159,12 +159,26 @@ def is_valid_file(file_path):
             logger.error(f"Invalid video file {file_path}: {e}")
             return False
     return True
+    
+def estimate_download_size(profile_dir):
+    total_size = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if file_path.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
+                total_size += os.path.getsize(file_path)
+    return total_size
 
 async def download_and_send_media(username, chat_id, tag, pinned_message_id, max_age):
     profile_dir = username
     new_files = []
     total_files = 0
     tasks = []
+
+    estimated_size = estimate_download_size(profile_dir)
+    if estimated_size > CACHE_SIZE_LIMIT:
+        await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
+        return
 
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     processes[chat_id] = process
@@ -219,11 +233,17 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
 
+
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
     initial_file_count = 0
     for dirpath, _, filenames in os.walk(profile_dir):
         initial_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
+
+    estimated_size = estimate_download_size(profile_dir)
+    if estimated_size > CACHE_SIZE_LIMIT:
+        await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
+        return
 
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     processes[chat_id] = process
@@ -246,6 +266,7 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
     total_files_downloaded = final_file_count - initial_file_count
     msg = await client.send_message(chat_id, f"Download complete. {total_files_downloaded} files downloaded for {username}. {tag}")
     TEXT_MESSAGES.append(msg.id)
+
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
