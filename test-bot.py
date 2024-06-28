@@ -55,7 +55,8 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         attempts = 0
         while attempts < 5:
             try:
-                await client.send_file(chat_id, file_path, caption=tag)
+                msg = await client.send_file(chat_id, file_path, caption=tag)
+                TEXT_MESSAGES.append(msg.id)  # Save message ID
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
                         pass  # Open in write mode to make file empty
@@ -304,7 +305,7 @@ async def load_command(event):
         wait_time = e.seconds
         await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
         
-#=====================================================================
+
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -349,6 +350,12 @@ async def check_command(event):
 #=====================================================================
 
 
+@client.on(events.NewMessage(pattern='/erase$'))
+async def erase_command_usage(event):
+    if event.sender_id == TELEGRAM_USER_ID:
+        msg = await event.respond("Usage: /erase <username>")
+        USER_MESSAGES.append(msg.id)
+
 @client.on(events.NewMessage(pattern='/erase (.+)'))
 async def erase_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -358,15 +365,29 @@ async def erase_command(event):
         return
 
     tag = event.pattern_match.group(1).strip()
+    message_ids_to_delete = []
 
-    async for message in client.iter_messages(event.chat_id, search=f"#{tag}"):
+    for msg_id in TEXT_MESSAGES:
+        message = await client.get_messages(event.chat_id, ids=msg_id)
+        if message and f"#{tag}" in message.message:
+            message_ids_to_delete.append(msg_id)
+
+    if message_ids_to_delete:
         try:
-            await client(DeleteMessagesRequest(id=[message.id]))
+            await client.delete_messages(event.chat_id, message_ids_to_delete)
+            msg = await event.respond(f"All messages with tag #{tag} have been erased.")
+            USER_MESSAGES.append(msg.id)
         except Exception as e:
-            logger.error(f"Failed to delete message {message.id}: {str(e)}")
+            logger.error(f"Failed to delete messages: {str(e)}")
+            msg = await event.respond("Failed to delete messages.")
+            USER_MESSAGES.append(msg.id)
+    else:
+        msg = await event.respond(f"No messages with tag #{tag} found.")
+        USER_MESSAGES.append(msg.id)
 
-    msg = await event.respond(f"All messages with tag #{tag} have been erased.")
-    USER_MESSAGES.append(msg.id)
+
+
+#=====================================================================
 
 async def handle_flood_wait_error(event, wait_time):
     msg = await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
