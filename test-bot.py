@@ -221,7 +221,9 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
-    total_files = 0
+    initial_file_count = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        initial_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
 
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     processes[chat_id] = process
@@ -232,23 +234,22 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
             break
         if output:
             logger.info(output)
-            if "Downloaded" in output and "new" in output:
-                for dirpath, _, filenames in os.walk(profile_dir):
-                    for filename in filenames:
-                        file_path = os.path.join(dirpath, filename)
-                        if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
-                            total_files += 1
 
     process.stdout.close()
     process.stderr.close()
     del processes[chat_id]
 
-    await client.send_message(chat_id, f"Download complete. {total_files} files downloaded for {username}. {tag}")
+    final_file_count = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        final_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
+
+    total_files_downloaded = final_file_count - initial_file_count
+    await client.send_message(chat_id, f"Download complete. {total_files_downloaded} files downloaded for {username}. {tag}")
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /load <username or subscription number> <max_age>")
+        msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
         USER_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
@@ -260,12 +261,8 @@ async def load_command(event):
         return
 
     args = event.pattern_match.group(1).strip().split()
-    if len(args) != 2 or not args[1].isdigit():
-        msg = await event.respond("Usage: /load <username or subscription number> <max_age>")
-        USER_MESSAGES.append(msg.id)
-        return
-
-    target, max_age = args[0], int(args[1])
+    target = args[0]
+    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
     tag = f"#{target}"
 
     try:
@@ -304,7 +301,7 @@ async def load_command(event):
     except FloodWaitError as e:
         wait_time = e.seconds
         await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
-        
+
 
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
