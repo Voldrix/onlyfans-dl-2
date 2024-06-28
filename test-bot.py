@@ -353,7 +353,7 @@ async def check_command(event):
 @client.on(events.NewMessage(pattern='/erase$'))
 async def erase_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /erase <username>")
+        msg = await event.respond("Usage: /erase <username or subscription number>")
         USER_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/erase (.+)'))
@@ -364,26 +364,51 @@ async def erase_command(event):
         logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
-    tag = event.pattern_match.group(1).strip()
+    target = event.pattern_match.group(1).strip()
+
+    try:
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+            tag = f"#{username}"
+        else:
+            username = target
+            tag = f"#{target}"
+
+        if username not in [sub.strip() for sub in subscriptions]:
+            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
+            USER_MESSAGES.append(msg.id)
+            return
+    except (IndexError, FileNotFoundError):
+        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+        USER_MESSAGES.append(msg.id)
+        return
+
     message_ids_to_delete = []
 
     for msg_id in TEXT_MESSAGES:
         message = await client.get_messages(event.chat_id, ids=msg_id)
-        if message and f"#{tag}" in message.message:
+        if message and f"#{username}" in message.message:
             message_ids_to_delete.append(msg_id)
 
     if message_ids_to_delete:
         try:
             await client.delete_messages(event.chat_id, message_ids_to_delete)
-            msg = await event.respond(f"All messages with tag #{tag} have been erased.")
+            msg = await event.respond(f"All messages with tag #{username} have been erased.")
             USER_MESSAGES.append(msg.id)
         except Exception as e:
             logger.error(f"Failed to delete messages: {str(e)}")
             msg = await event.respond("Failed to delete messages.")
             USER_MESSAGES.append(msg.id)
     else:
-        msg = await event.respond(f"No messages with tag #{tag} found.")
+        msg = await event.respond(f"No messages with tag #{username} found.")
         USER_MESSAGES.append(msg.id)
+
 
 
 
@@ -425,10 +450,11 @@ async def list_command(event):
             msg = await event.respond("Error: subscriptions_list.txt not found.")
             USER_MESSAGES.append(msg.id)
 
+
 @client.on(events.NewMessage(pattern='/get$'))
 async def get_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /get <username or subscription number> <max_age>")
+        msg = await event.respond("Usage: /get <username or subscription number> <max_age (optional)>")
         USER_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
@@ -440,12 +466,8 @@ async def get_command(event):
         return
 
     args = event.pattern_match.group(1).strip().split()
-    if len(args) != 2 or not args[1].isdigit():
-        msg = await event.respond("Usage: /get <username or subscription number> <max_age>")
-        USER_MESSAGES.append(msg.id)
-        return
-
-    target, max_age = args[0], int(args[1])
+    target = args[0]
+    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
     tag = f"#{target}"
 
     try:
@@ -490,6 +512,7 @@ async def get_command(event):
     except FloodWaitError as e:
         wait_time = e.seconds
         await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
+
 
 
 @client.on(events.NewMessage(pattern='/user_id$'))
