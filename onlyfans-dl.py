@@ -146,15 +146,17 @@ def get_subscriptions():
     return [row['username'] for row in subs]
 
 async def download_file(session, url, dest_path):
+    temp_path = f"{os.path.dirname(dest_path)}/bad-{os.path.basename(dest_path)}.temp"
     async with session.get(url) as response:
         if response.status != 200:
             return False
-        with open(dest_path, 'wb') as f:
+        with open(temp_path, 'wb') as f:
             while True:
                 chunk = await response.content.read(1024)
                 if not chunk:
                     break
                 f.write(chunk)
+    os.rename(temp_path, dest_path)
     return True
 
 async def download_media(media, subtype, postdate, album=''):
@@ -210,6 +212,7 @@ async def get_content(MEDIATYPE, API_LOCATION):
     if len(posts) > 0:
         print(f"Found {len(posts)} {MEDIATYPE}")
         tasks = []
+        semaphore = asyncio.Semaphore(MAX_PARALLEL_DOWNLOADS)  # Ограничение на количество параллельных задач
         for post in posts:
             if "media" not in post or ("canViewMedia" in post and not post["canViewMedia"]):
                 continue
@@ -226,11 +229,21 @@ async def get_content(MEDIATYPE, API_LOCATION):
                 if MEDIATYPE == "stories":
                     postdate = media["createdAt"][:10]
                 if "source" in media and "source" in media["source"] and media["source"]["source"] and ("canView" not in media or media["canView"]) or "files" in media:
-                    tasks.append(download_media(media, MEDIATYPE, postdate, album))
+                    tasks.append(download_media_with_semaphore(semaphore, media, MEDIATYPE, postdate, album))
         await asyncio.gather(*tasks)
         global new_files
         print(f"Downloaded {new_files} new {MEDIATYPE}")
         new_files = 0
+
+async def download_media_with_semaphore(semaphore, media, MEDIATYPE, postdate, album):
+    async with semaphore:
+        await download_media(media, MEDIATYPE, postdate, album)
+
+def delete_temp_files(profile):
+    for dirpath, dirs, files in os.walk(profile):
+        for file in files:
+            if file.startswith('bad-') and file.endswith('.temp'):
+                os.remove(os.path.join(dirpath, file))
 
 def print_usage():
     print("\nUsage: onlyfans-dl.py <list of profiles / all> <max age (optional)>\n")
@@ -311,6 +324,7 @@ if __name__ == "__main__":
 
         if os.path.isdir(PROFILE):
             print(f"\n{PROFILE} exists.\nDownloading new media, skipping pre-existing.")
+            delete_temp_files(PROFILE)  # Удаление временных файлов перед началом загрузки
         else:
             print(f"\nDownloading content to {PROFILE}")
 
