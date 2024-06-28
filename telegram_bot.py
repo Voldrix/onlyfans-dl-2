@@ -106,7 +106,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
         # get media type and data
         file_name = os.path.basename(file_path)
         sent_files = load_sent_files(profile_dir)
-        if file_name in sent_files:
+        if file_name in sent_files or file_name.startswith('bad-'):
             return
 
         if file_name.endswith(('jpg', 'jpeg', 'png')):
@@ -119,7 +119,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
             media_type = 'gif'
         else:
             media_type = 'file'
-        
+
         post_date = file_name.split('_')[0]
         full_tag = f"{tag} #{media_type} {post_date}"
 
@@ -142,6 +142,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
     except MessageNotModifiedError:
         pass
 
+
 def is_valid_file(file_path):
     if file_path.endswith(('jpg', 'jpeg', 'png')):
         try:
@@ -159,7 +160,8 @@ def is_valid_file(file_path):
             logger.error(f"Invalid video file {file_path}: {e}")
             return False
     return True
-    
+
+
 def estimate_download_size(profile_dir):
     total_size = 0
     for dirpath, _, filenames in os.walk(profile_dir):
@@ -169,7 +171,7 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(file_path)
     return total_size
 
-async def download_and_send_media(username, chat_id, tag, pinned_message_id, max_age):
+async def download_and_send_media(username, chat_id, tag, pinned_message_id, max_age, event):
     profile_dir = username
     new_files = []
     total_files = 0
@@ -211,12 +213,16 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
         TEXT_MESSAGES.append(msg.id)
         return
 
-    await client(EditMessageRequest(
-        peer=chat_id,
-        id=pinned_message_id,
-        message=f"Total new files to send: {total_files}. {tag}"
-    ))
-    LAST_MESSAGE_CONTENT[pinned_message_id] = f"Total new files to send: {total_files}. {tag}"
+    try:
+        await client(EditMessageRequest(
+            peer=chat_id,
+            id=pinned_message_id,
+            message=f"Total new files to send: {total_files}. {tag}"
+        ))
+        LAST_MESSAGE_CONTENT[pinned_message_id] = f"Total new files to send: {total_files}. {tag}"
+    except FloodWaitError as e:
+        wait_time = e.seconds
+        await handle_flood_wait_error(event, wait_time)
 
     download_complete_msg = await client.send_message(chat_id, f"Download complete. {tag}")
     TEXT_MESSAGES.append(download_complete_msg.id)
@@ -232,6 +238,7 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
     # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
+
 
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
@@ -336,10 +343,10 @@ async def check_command(event):
         header = "**__profile (sent/total)__**\n"
         separator = "--------------------------\n"
         response = header + separator  # Adding the header and separator to the response
-        
+
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
-        
+
         for profile in subscriptions:
             profile = profile.strip()
             profile_dir = os.path.join('.', profile)
@@ -423,12 +430,17 @@ async def erase_command(event):
         USER_MESSAGES.append(msg.id)
 
 async def handle_flood_wait_error(event, wait_time):
-    msg = await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
-    USER_MESSAGES.append(msg.id)
-    while wait_time > 0:
-        print(f"Remaining wait time: {wait_time} seconds")
-        await asyncio.sleep(min(wait_time, 60))
-        wait_time -= 60
+    try:
+        msg = await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
+        USER_MESSAGES.append(msg.id)
+        while wait_time > 0:
+            logger.info(f"Remaining wait time: {wait_time} seconds")
+            await asyncio.sleep(min(wait_time, 60))
+            wait_time -= 60
+    except Exception as e:
+        logger.error(f"Error while handling flood wait: {str(e)}")
+
+
 
 @client.on(events.NewMessage(pattern='/list'))
 async def list_command(event):
@@ -516,10 +528,13 @@ async def get_command(event):
             silent=True
         ))
 
-        await download_and_send_media(username, event.chat_id, tag, pinned_message_id, max_age)
+        await download_and_send_media(username, event.chat_id, tag, pinned_message_id, max_age, event)
     except FloodWaitError as e:
         wait_time = e.seconds
-        await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
+        await handle_flood_wait_error(event, wait_time)
+    except Exception as e:
+        await event.respond(f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/user_id$'))
 async def user_id_command_usage(event):
