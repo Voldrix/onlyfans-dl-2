@@ -314,7 +314,9 @@ async def check_command(event):
         return
 
     try:
-        response = "**__profile (sent/total)__**\n"  # Adding the header of the table
+        header = "**__profile (sent/total)__**\n"
+        separator = "-------------------------\n"
+        response = header + separator  # Adding the header of the table
         
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
@@ -329,9 +331,9 @@ async def check_command(event):
                     for file in files:
                         if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
                             total_files += 1
-                response += f"{profile} ({len(sent_files)}/{total_files})\n"
+                response += f"`{profile}` ({len(sent_files)}/**{total_files}**)\n"
 
-        if response.strip() == "**__profile (sent/total)__**\n":
+        if response.strip() == header + separator:
             msg = await event.respond("No downloaded profiles found.")
             USER_MESSAGES.append(msg.id)
         else:
@@ -341,6 +343,7 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         msg = await event.respond("Error checking profiles.")
         USER_MESSAGES.append(msg.id)
+
 
 #=====================================================================
 
