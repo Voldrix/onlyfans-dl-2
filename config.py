@@ -43,7 +43,7 @@ API_ID = 'xxx'
 API_HASH = 'xxx'
 
 # Size of disk space buffer you want to use on your server for temporary media saving
-CACHE_SIZE_LIMIT = 2000 * 1024 * 1024  # maximum telegram size of file is 2 GB.
+CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
 
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  # or False
