@@ -303,7 +303,8 @@ async def load_command(event):
     except FloodWaitError as e:
         wait_time = e.seconds
         await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
-
+        
+#=====================================================================
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -313,15 +314,20 @@ async def check_command(event):
         return
 
     try:
-        response = "**__profile (sent/total)__**\n"  # Добавление шапки таблицы
-        for profile in os.listdir('.'):
+        response = "**__profile (sent/total)__**\n"  # Adding the header of the table
+        
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+        
+        for profile in subscriptions:
+            profile = profile.strip()
             profile_dir = os.path.join('.', profile)
-            if os.path.isdir(profile_dir) and not profile.startswith('.') and profile != '__pycache__':
+            if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
                 sent_files = load_sent_files(profile_dir)
-                total_files = sum([len(files) for _, _, files in os.walk(profile_dir) if not files[0].endswith('.part')])
+                total_files = sum([len(files) for _, _, files in os.walk(profile_dir) if files]) - len(sent_files)
                 response += f"{profile} ({len(sent_files)}/{total_files})\n"
 
-        if not response.strip():
+        if response.strip() == "**__profile (sent/total)__**\n":
             msg = await event.respond("No downloaded profiles found.")
             USER_MESSAGES.append(msg.id)
         else:
@@ -331,6 +337,7 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         msg = await event.respond("Error checking profiles.")
         USER_MESSAGES.append(msg.id)
+#=====================================================================
 
 
 @client.on(events.NewMessage(pattern='/erase (.+)'))
