@@ -315,8 +315,8 @@ async def check_command(event):
 
     try:
         header = "**__profile (sent/total)__**\n"
-        separator = "-------------------------\n"
-        response = header + separator  # Adding the header of the table
+        separator = "--------------------------\n"
+        response = header + separator  # Adding the header and separator to the response
         
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
@@ -343,6 +343,7 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         msg = await event.respond("Error checking profiles.")
         USER_MESSAGES.append(msg.id)
+
 
 
 #=====================================================================
