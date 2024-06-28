@@ -324,7 +324,11 @@ async def check_command(event):
             profile_dir = os.path.join('.', profile)
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
                 sent_files = load_sent_files(profile_dir)
-                total_files = sum([len(files) for _, _, files in os.walk(profile_dir) if files]) - len(sent_files)
+                total_files = 0
+                for root, _, files in os.walk(profile_dir):
+                    for file in files:
+                        if file != 'sent_files.txt' and file.endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
+                            total_files += 1
                 response += f"{profile} ({len(sent_files)}/{total_files})\n"
 
         if response.strip() == "**__profile (sent/total)__**\n":
@@ -337,6 +341,7 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         msg = await event.respond("Error checking profiles.")
         USER_MESSAGES.append(msg.id)
+
 #=====================================================================
 
 
