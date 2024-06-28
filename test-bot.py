@@ -314,13 +314,12 @@ async def check_command(event):
 
     try:
         response = ""
-        for dirpath, dirnames, filenames in os.walk('.'):
-            for dirname in dirnames:
-                profile_dir = os.path.join(dirpath, dirname)
-                if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
-                    sent_files = load_sent_files(profile_dir)
-                    total_files = len([f for f in os.listdir(profile_dir) if os.path.isfile(os.path.join(profile_dir, f)) and f not in sent_files])
-                    response += f"{dirname} ({len(sent_files)}/{total_files})\n"
+        for profile in os.listdir('.'):
+            profile_dir = os.path.join('.', profile)
+            if os.path.isdir(profile_dir) and not profile.startswith('.'):
+                sent_files = load_sent_files(profile_dir)
+                total_files = sum([len(files) for _, _, files in os.walk(profile_dir)]) - len(sent_files)
+                response += f"{profile} ({len(sent_files)}/{total_files})\n"
 
         if not response:
             msg = await event.respond("No downloaded profiles found.")
@@ -332,6 +331,7 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         msg = await event.respond("Error checking profiles.")
         USER_MESSAGES.append(msg.id)
+
 
 @client.on(events.NewMessage(pattern='/erase (.+)'))
 async def erase_command(event):
