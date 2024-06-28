@@ -1,9 +1,14 @@
 import os
 import re
+import math
 import asyncio
 import subprocess
+import requests
 import logging
-from telethon.errors.rpcerrorlist import MessageNotModifiedError, FloodWaitError, RPCError
+import concurrent.futures
+from aiogram import Bot, Dispatcher
+from aiogram.utils import exceptions as aiogram_exceptions
+from telethon.errors.rpcerrorlist import MessageNotModifiedError, FloodWaitError
 from telethon import TelegramClient, events
 from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.tl.functions.bots import SetBotCommandsRequest
@@ -12,6 +17,12 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, API_ID, API_HASH, CACHE
 import aiohttp
 from PIL import Image
 from moviepy.editor import VideoFileClip
+
+# Initialize aiogram bot
+aiogram_bot = Bot(token=TELEGRAM_BOT_TOKEN)
+dp = Dispatcher(aiogram_bot)
+
+current_split_process = None
 
 # Path to the main script
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
@@ -44,43 +55,73 @@ def save_sent_file(profile_dir, file_name):
     with open(sent_files_path, 'a') as f:
         f.write(file_name + '\n')
 
-async def send_file_and_replace_with_empty(chat_id, file_path, tag, part=None):
+async def send_file_and_replace_with_empty(chat_id, file_path, tag):
     if 'sent_files.txt' in file_path:
         return
     file_size = os.path.getsize(file_path)
     if file_size > TELEGRAM_FILE_SIZE_LIMIT:
-        # Разбить файл на части и отправить их
-        part_number = 1
-        with open(file_path, 'rb') as f:
-            while True:
-                chunk = f.read(TELEGRAM_FILE_SIZE_LIMIT)
-                if not chunk:
-                    break
-                part_file_path = f"{file_path}.part{part_number}"
-                with open(part_file_path, 'wb') as part_file:
-                    part_file.write(chunk)
-                await send_file_and_replace_with_empty(chat_id, part_file_path, tag, part=part_number)
-                part_number += 1
-                os.remove(part_file_path)
-        return
+        await split_and_send_large_file(chat_id, file_path, tag)
     elif file_size > 0:
         attempts = 0
         while attempts < 5:
             try:
-                caption = f"{tag}" if not part else f"{tag} - Part {part}"
-                msg = await client.send_file(chat_id, file_path, caption=caption)
+                msg = await client.send_file(chat_id, file_path, caption=tag)
                 TEXT_MESSAGES.append(msg.id)  # Save message ID
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
                         pass  # Open in write mode to make file empty
                 break
-            except (ValueError, RPCError) as e:
+            except FloodWaitError as e:
+                await handle_flood_wait(chat_id, e.seconds)
+                attempts += 1
+            except ValueError as e:
                 logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
                 attempts += 1
                 await asyncio.sleep(5)  # Wait before retrying
         else:
-            msg = await client.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
-            TEXT_MESSAGES.append(msg.id)
+            await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
+
+def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
+    global current_split_process
+    command = [
+        'ffmpeg', '-y', '-i', input_file,
+        '-ss', str(start_time), '-t', str(duration),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', output_file
+    ]
+    current_split_process = subprocess.Popen(command)
+    current_split_process.wait()  # Wait for the process to finish
+
+async def split_and_send_large_file(chat_id, file_path, tag):
+    video = VideoFileClip(file_path)
+    duration = video.duration
+    file_size = os.path.getsize(file_path)
+    num_parts = math.ceil(file_size / TELEGRAM_FILE_SIZE_LIMIT)
+    part_duration = duration / num_parts
+
+    base_name, ext = os.path.splitext(file_path)
+    
+    await client.send_message(chat_id, f"Detected large file: {os.path.basename(file_path)}, Size: {file_size/(1024*1024):.2f} MB, Splitting into {num_parts} parts")
+
+    for i in range(num_parts):
+        start_time = i * part_duration
+        end_time = min(start_time + part_duration, duration)
+        part_path = f"{base_name}.part{i + 1}{ext}"
+
+        command = [
+            'ffmpeg', '-y', '-i', file_path, '-ss', str(start_time), '-t', str(end_time - start_time),
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '4', '-c:a', 'aac', part_path
+        ]
+
+        global current_split_process
+        current_split_process = subprocess.Popen(command)
+        current_split_process.wait()  # Wait for the process to finish
+
+        await send_file_and_replace_with_empty(chat_id, part_path, f"{tag} Part {i + 1}")
+        os.remove(part_path)  # Remove part file after sending
+
+    current_split_process = None  # Reset the process variable
+
+
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -114,47 +155,46 @@ async def fetch_url(session, url, path):
                     break
                 f.write(chunk)
 
-async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, semaphore):
-    async with semaphore:
-        try:
-            # get media type and data
-            file_name = os.path.basename(file_path)
-            sent_files = load_sent_files(profile_dir)
-            if file_name in sent_files or file_name.startswith('bad-'):
-                return
+async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock):
+    try:
+        # get media type and data
+        file_name = os.path.basename(file_path)
+        sent_files = load_sent_files(profile_dir)
+        if file_name in sent_files or file_name.startswith('bad-'):
+            return
 
-            if file_name.endswith(('jpg', 'jpeg', 'png')):
-                media_type = 'photo'
-            elif file_name.endswith('mp4'):
-                media_type = 'video'
-            elif file_name.endswith('mp3'):
-                media_type = 'audio'
-            elif file_name.endswith('gif'):
-                media_type = 'gif'
-            else:
-                media_type = 'file'
+        if file_name.endswith(('jpg', 'jpeg', 'png')):
+            media_type = 'photo'
+        elif file_name.endswith('mp4'):
+            media_type = 'video'
+        elif file_name.endswith('mp3'):
+            media_type = 'audio'
+        elif file_name.endswith('gif'):
+            media_type = 'gif'
+        else:
+            media_type = 'file'
 
-            post_date = file_name.split('_')[0]
-            full_tag = f"{tag} #{media_type} {post_date}"
+        post_date = file_name.split('_')[0]
+        full_tag = f"{tag} #{media_type} {post_date}"
 
-            if is_valid_file(file_path):
-                await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
-                save_sent_file(profile_dir, file_name)
-            else:
-                os.remove(file_path)
+        if is_valid_file(file_path):
+            await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
+            save_sent_file(profile_dir, file_name)
+        else:
+            os.remove(file_path)
 
-            # decrease counter of remaining media files
-            async with lock:
-                remaining_files_ref[0] -= 1
-                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
-                await client(EditMessageRequest(
-                    peer=chat_id,
-                    id=pinned_message_id,
-                    message=message_content
-                ))
-                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
-        except MessageNotModifiedError:
-            pass
+        # decrease counter of remaining media files
+        async with lock:
+            remaining_files_ref[0] -= 1
+            message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+            await client(EditMessageRequest(
+                peer=chat_id,
+                id=pinned_message_id,
+                message=message_content
+            ))
+            LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+    except MessageNotModifiedError:
+        pass
 
 def is_valid_file(file_path):
     if file_path.endswith(('jpg', 'jpeg', 'png')):
@@ -183,6 +223,7 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(file_path)
     return total_size
 
+
 async def download_and_send_media(username, chat_id, tag, pinned_message_id, max_age, event):
     profile_dir = username
     new_files = []
@@ -194,12 +235,14 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
         await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
         return
 
-    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    processes[chat_id] = process
+    command = ['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)]
+    global current_split_process
+    current_split_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    processes[chat_id] = current_split_process
 
     while True:
-        output = process.stdout.readline().strip()
-        if not output and process.poll() is not None:
+        output = current_split_process.stdout.readline().strip()
+        if not output and current_split_process.poll() is not None:
             break
         if output:
             logger.info(output)
@@ -211,8 +254,9 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
                             new_files.append(file_path)
                             total_files += 1
 
-    process.stdout.close()
-    process.stderr.close()
+    current_split_process.stdout.close()
+    current_split_process.stderr.close()
+    current_split_process = None
     del processes[chat_id]
 
     # Filter out already sent files
@@ -241,16 +285,22 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
 
     remaining_files = [total_files]  # use list for changing object
     lock = asyncio.Lock()  # create object Lock for synchronization
-    semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)  # Ограничение на количество параллельных задач
+
+    semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)
 
     for file_path in new_files:
-        tasks.append(process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, semaphore))
+        tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
 
     await asyncio.gather(*tasks)
 
     # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
+
+
+async def upload_with_semaphore(semaphore, process_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock):
+    async with semaphore:
+        await process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock)
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
@@ -263,18 +313,21 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
         await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
         return
 
-    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    processes[chat_id] = process
+    command = ['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)]
+    global current_split_process
+    current_split_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    processes[chat_id] = current_split_process
 
     while True:
-        output = process.stdout.readline().strip()
-        if not output and process.poll() is not None:
+        output = current_split_process.stdout.readline().strip()
+        if not output and current_split_process.poll() is not None:
             break
         if output:
             logger.info(output)
 
-    process.stdout.close()
-    process.stderr.close()
+    current_split_process.stdout.close()
+    current_split_process.stderr.close()
+    current_split_process = None
     del processes[chat_id]
 
     final_file_count = 0
@@ -284,6 +337,7 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
     total_files_downloaded = final_file_count - initial_file_count
     msg = await client.send_message(chat_id, f"Download complete. {total_files_downloaded} files downloaded for {username}. {tag}")
     TEXT_MESSAGES.append(msg.id)
+
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
@@ -439,16 +493,32 @@ async def erase_command(event):
         msg = await event.respond(f"No messages with tag #{username} found.")
         USER_MESSAGES.append(msg.id)
 
-async def handle_flood_wait_error(event, wait_time):
+def send_fallback_message(chat_id, message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message
+    }
+    response = requests.post(url, data=data)
+    if response.status_code != 200:
+        logger.error(f"Failed to send fallback message: {response.text}")
+
+async def handle_flood_wait(chat_id, wait_time):
+    message = f"FloodWaitError: Please wait for {wait_time} seconds."
     try:
-        msg = await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
-        USER_MESSAGES.append(msg.id)
-        while wait_time > 0:
-            logger.info(f"Remaining wait time: {wait_time} seconds")
-            await asyncio.sleep(min(wait_time, 60))
-            wait_time -= 60
-    except Exception as e:
-        logger.error(f"Error while handling flood wait: {str(e)}")
+        await aiogram_bot.send_message(chat_id, message)
+    except aiogram_exceptions.BotBlocked:
+        logger.error(f"Target [ID:{chat_id}]: blocked by user")
+    except aiogram_exceptions.ChatNotFound:
+        logger.error(f"Target [ID:{chat_id}]: invalid user ID")
+    except aiogram_exceptions.RetryAfter as e:
+        logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
+        await asyncio.sleep(e.timeout)
+        return await handle_flood_wait(chat_id, wait_time)
+    except aiogram_exceptions.TelegramAPIError:
+        logger.exception(f"Target [ID:{chat_id}]: failed")
+    await asyncio.sleep(wait_time)
+
 
 @client.on(events.NewMessage(pattern='/list'))
 async def list_command(event):
@@ -624,18 +694,21 @@ async def clear_command(event):
 
         # get all tracked messages
         for msg_id in TEXT_MESSAGES:
-            message = await client.get_messages(event.chat_id, ids=msg_id)
-            if message and not message.media:  # Check if the message does not contain media
-                messages_to_delete.append(msg_id)
+            messages_to_delete.append(msg_id)
         for msg_id in USER_MESSAGES:
             messages_to_delete.append(msg_id)
 
         # delete traced messages
-        await client.delete_messages(event.chat_id, messages_to_delete)
+        try:
+            await client.delete_messages(event.chat_id, messages_to_delete)
+        except FloodWaitError as e:
+            await handle_flood_wait(event.chat_id, e.seconds)
 
         # clear tracked messages ID's
         TEXT_MESSAGES.clear()
         USER_MESSAGES.clear()
+
+
 
 @client.on(events.NewMessage())
 async def track_user_messages(event):
@@ -646,16 +719,17 @@ async def track_user_messages(event):
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
+    global current_split_process
     if event.sender_id == TELEGRAM_USER_ID:
-        if event.chat_id in processes:
-            processes[event.chat_id].terminate()
-            processes[event.chat_id].wait()  # Wait for the process to terminate
-            del processes[event.chat_id]
-            msg = await event.respond("Download stopped.")
-            TEXT_MESSAGES.append(msg.id)
-        else:
-            msg = await event.respond("No active download process found.")
-            TEXT_MESSAGES.append(msg.id)
+        if current_split_process:
+            current_split_process.terminate()
+            current_split_process.wait()
+            current_split_process = None
+        await event.respond("Splitting process stopped.")
+        # Restart the bot by restarting the script
+        os.system("pkill -f telegram_bot.py")  # Kills the script
+        os.system("python3 telegram_bot.py &")  # Restarts the script
+
 
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
@@ -713,7 +787,7 @@ async def setup_bot_commands():
         BotCommand(command='erase', description='Erase chat messages with a specific hashtag'),
         BotCommand(command='del', description='Delete profile folder from server'),
         BotCommand(command='clear', description='Clear non-media messages in chat'),
-        BotCommand(command='stop', description='Stop the download process'),
+        BotCommand(command='stop', description='Stop current process and restart bot'),
         BotCommand(command='user_id', description='Update USER_ID'),
         BotCommand(command='user_agent', description='Update USER_AGENT'),
         BotCommand(command='x_bc', description='Update X_BC'),
