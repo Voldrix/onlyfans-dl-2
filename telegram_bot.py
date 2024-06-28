@@ -3,12 +3,12 @@ import re
 import asyncio
 import subprocess
 import logging
-from telethon.errors.rpcerrorlist import MessageNotModifiedError, FloodWaitError
+from telethon.errors.rpcerrorlist import MessageNotModifiedError, FloodWaitError, RPCError
 from telethon import TelegramClient, events
 from telethon.tl.types import BotCommand, BotCommandScopeDefault
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.functions.messages import EditMessageRequest, UpdatePinnedMessageRequest, DeleteMessagesRequest
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, API_ID, API_HASH, CACHE_SIZE_LIMIT, update_config, delete_media_from_server
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, API_ID, API_HASH, CACHE_SIZE_LIMIT, update_config, delete_media_from_server, MAX_PARALLEL_UPLOADS
 import aiohttp
 from PIL import Image
 from moviepy.editor import VideoFileClip
@@ -44,24 +44,37 @@ def save_sent_file(profile_dir, file_name):
     with open(sent_files_path, 'a') as f:
         f.write(file_name + '\n')
 
-async def send_file_and_replace_with_empty(chat_id, file_path, tag):
+async def send_file_and_replace_with_empty(chat_id, file_path, tag, part=None):
     if 'sent_files.txt' in file_path:
         return
     file_size = os.path.getsize(file_path)
     if file_size > TELEGRAM_FILE_SIZE_LIMIT:
-        msg = await client.send_message(chat_id, f"File {os.path.basename(file_path)} is too large ({file_size / (1024 * 1024):.2f} MB) and won't be sent. {tag}")
-        TEXT_MESSAGES.append(msg.id)
+        # Разбить файл на части и отправить их
+        part_number = 1
+        with open(file_path, 'rb') as f:
+            while True:
+                chunk = f.read(TELEGRAM_FILE_SIZE_LIMIT)
+                if not chunk:
+                    break
+                part_file_path = f"{file_path}.part{part_number}"
+                with open(part_file_path, 'wb') as part_file:
+                    part_file.write(chunk)
+                await send_file_and_replace_with_empty(chat_id, part_file_path, tag, part=part_number)
+                part_number += 1
+                os.remove(part_file_path)
+        return
     elif file_size > 0:
         attempts = 0
         while attempts < 5:
             try:
-                msg = await client.send_file(chat_id, file_path, caption=tag)
+                caption = f"{tag}" if not part else f"{tag} - Part {part}"
+                msg = await client.send_file(chat_id, file_path, caption=caption)
                 TEXT_MESSAGES.append(msg.id)  # Save message ID
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
                         pass  # Open in write mode to make file empty
                 break
-            except ValueError as e:
+            except (ValueError, RPCError) as e:
                 logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
                 attempts += 1
                 await asyncio.sleep(5)  # Wait before retrying
@@ -101,47 +114,47 @@ async def fetch_url(session, url, path):
                     break
                 f.write(chunk)
 
-async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock):
-    try:
-        # get media type and data
-        file_name = os.path.basename(file_path)
-        sent_files = load_sent_files(profile_dir)
-        if file_name in sent_files or file_name.startswith('bad-'):
-            return
+async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, semaphore):
+    async with semaphore:
+        try:
+            # get media type and data
+            file_name = os.path.basename(file_path)
+            sent_files = load_sent_files(profile_dir)
+            if file_name in sent_files or file_name.startswith('bad-'):
+                return
 
-        if file_name.endswith(('jpg', 'jpeg', 'png')):
-            media_type = 'photo'
-        elif file_name.endswith('mp4'):
-            media_type = 'video'
-        elif file_name.endswith('mp3'):
-            media_type = 'audio'
-        elif file_name.endswith('gif'):
-            media_type = 'gif'
-        else:
-            media_type = 'file'
+            if file_name.endswith(('jpg', 'jpeg', 'png')):
+                media_type = 'photo'
+            elif file_name.endswith('mp4'):
+                media_type = 'video'
+            elif file_name.endswith('mp3'):
+                media_type = 'audio'
+            elif file_name.endswith('gif'):
+                media_type = 'gif'
+            else:
+                media_type = 'file'
 
-        post_date = file_name.split('_')[0]
-        full_tag = f"{tag} #{media_type} {post_date}"
+            post_date = file_name.split('_')[0]
+            full_tag = f"{tag} #{media_type} {post_date}"
 
-        if is_valid_file(file_path):
-            await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
-            save_sent_file(profile_dir, file_name)
-        else:
-            os.remove(file_path)
+            if is_valid_file(file_path):
+                await send_file_and_replace_with_empty(chat_id, file_path, full_tag)
+                save_sent_file(profile_dir, file_name)
+            else:
+                os.remove(file_path)
 
-        # decrease counter of remaining media files
-        async with lock:
-            remaining_files_ref[0] -= 1
-            message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
-            await client(EditMessageRequest(
-                peer=chat_id,
-                id=pinned_message_id,
-                message=message_content
-            ))
-            LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
-    except MessageNotModifiedError:
-        pass
-
+            # decrease counter of remaining media files
+            async with lock:
+                remaining_files_ref[0] -= 1
+                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+                await client(EditMessageRequest(
+                    peer=chat_id,
+                    id=pinned_message_id,
+                    message=message_content
+                ))
+                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+        except MessageNotModifiedError:
+            pass
 
 def is_valid_file(file_path):
     if file_path.endswith(('jpg', 'jpeg', 'png')):
@@ -160,7 +173,6 @@ def is_valid_file(file_path):
             logger.error(f"Invalid video file {file_path}: {e}")
             return False
     return True
-
 
 def estimate_download_size(profile_dir):
     total_size = 0
@@ -229,17 +241,16 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
 
     remaining_files = [total_files]  # use list for changing object
     lock = asyncio.Lock()  # create object Lock for synchronization
+    semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)  # Ограничение на количество параллельных задач
 
     for file_path in new_files:
-        tasks.append(process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
+        tasks.append(process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, semaphore))
 
     await asyncio.gather(*tasks)
 
     # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
-
-
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
@@ -273,7 +284,6 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
     total_files_downloaded = final_file_count - initial_file_count
     msg = await client.send_message(chat_id, f"Download complete. {total_files_downloaded} files downloaded for {username}. {tag}")
     TEXT_MESSAGES.append(msg.id)
-
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
@@ -440,8 +450,6 @@ async def handle_flood_wait_error(event, wait_time):
     except Exception as e:
         logger.error(f"Error while handling flood wait: {str(e)}")
 
-
-
 @client.on(events.NewMessage(pattern='/list'))
 async def list_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -469,7 +477,6 @@ async def list_command(event):
         except FileNotFoundError:
             msg = await event.respond("Error: subscriptions_list.txt not found.")
             TEXT_MESSAGES.append(msg.id)
-
 
 @client.on(events.NewMessage(pattern='/get$'))
 async def get_command_usage(event):
@@ -534,7 +541,6 @@ async def get_command(event):
         await handle_flood_wait_error(event, wait_time)
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
-
 
 @client.on(events.NewMessage(pattern='/user_id$'))
 async def user_id_command_usage(event):
@@ -637,7 +643,6 @@ async def track_user_messages(event):
         if not event.message.media:  # Check if the message does not contain media
             USER_MESSAGES.append(event.id)
         TEXT_MESSAGES.append(event.id)  # Track all messages
-
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
