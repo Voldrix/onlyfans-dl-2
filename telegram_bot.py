@@ -502,56 +502,44 @@ async def load_command_usage(event):
         msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
         TEXT_MESSAGES.append(msg.id)
 
-@client.on(events.NewMessage(pattern='/load (.+)'))
-async def load_command(event):
-    if event.sender_id != TELEGRAM_USER_ID:
-        msg = await event.respond("Unauthorized access.")
-        USER_MESSAGES.append(msg.id)
-        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+@dp.message_handler(commands=['load'])
+async def load_command(message):
+    if message.from_user.id != TELEGRAM_USER_ID:
+        msg = await send_message_with_retry(message.chat.id, "Unauthorized access.")
+        if msg:
+            USER_MESSAGES.append(msg.message_id)
+        logger.warning(f"Unauthorized access denied for {message.from_user.id}.")
         return
 
-    args = event.pattern_match.group(1).strip().split()
+    args = message.text.split()[1:]
+    if not args:
+        msg = await send_message_with_retry(message.chat.id, "Usage: /load <username or subscription number> <max_age (optional)>")
+        if msg:
+            USER_MESSAGES.append(msg.message_id)
+        return
+
     target = args[0]
-    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
-    tag = f"#{target}"
+    max_age = args[1] if len(args) > 1 and args[1].isdigit() else None
+    command = ['python3', ONLYFANS_DL_SCRIPT, target]
+    if max_age:
+        command.append(max_age)
 
     try:
-        with open("subscriptions_list.txt", "r") as f:
-            subscriptions = f.readlines()
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
 
-        if target.isdigit():
-            target_index = int(target) - 1
-            if target_index < 0 or target_index >= len(subscriptions):
-                raise IndexError
-            username = subscriptions[target_index].strip()
-            tag = f"#{username}"
+        if process.returncode == 0:
+            msg = await send_message_with_retry(message.chat.id, f"Download completed for {target}.")
         else:
-            username = target
-            tag = f"#{target}"
-
-        if username not in [sub.strip() for sub in subscriptions]:
-            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
-            USER_MESSAGES.append(msg.id)
-            return
-    except (IndexError, FileNotFoundError):
-        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
-        USER_MESSAGES.append(msg.id)
-        return
-
-    if not os.path.exists(username):
-        os.makedirs(username)
-        msg = await event.respond(f"User directory {username} not found. Starting a fresh download. {tag}")
-        USER_MESSAGES.append(msg.id)
-
-    try:
-        msg = await event.respond(f"Started downloading media to server for {username} {tag}")
-        TEXT_MESSAGES.append(msg.id)
-
-        await download_media_without_sending(username, event.chat_id, tag, max_age)
-    except FloodWaitError as e:
-        wait_time = e.seconds
-        await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
-
+            msg = await send_message_with_retry(message.chat.id, f"Download failed for {target}. Error: {stderr}")
+        
+        if msg:
+            USER_MESSAGES.append(msg.message_id)
+    except Exception as e:
+        logger.error(f"Failed to execute download command for {target}: {str(e)}")
+        msg = await send_message_with_retry(message.chat.id, f"Failed to execute download command for {target}. Error: {str(e)}")
+        if msg:
+            USER_MESSAGES.append(msg.message_id)
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -872,7 +860,6 @@ async def clear_command(event):
 
         # Очищаем отслеживаемые ID сообщений
         TEXT_MESSAGES.clear()
-        USER_MESSAGES.clear()
         global last_flood_wait_message_time
         last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
 
@@ -881,10 +868,8 @@ async def clear_command(event):
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
         if not event.message.media:  # Проверяем, что сообщение не содержит медиа
-            USER_MESSAGES.append(event.id)
             TEXT_MESSAGES.append(event.id)  # Отслеживаем только текстовые сообщения
-        else:
-            USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
+        USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
 
 
 @client.on(events.NewMessage(pattern='/stop'))
