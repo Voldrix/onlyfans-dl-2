@@ -841,33 +841,37 @@ async def clear_command(event):
     if event.sender_id == TELEGRAM_USER_ID:
         messages_to_delete = []
 
-        # add identificator to clear this message
+        # Добавляем идентификатор, чтобы удалить это сообщение
         messages_to_delete.append(event.id)
 
-        # get all tracked messages
+        # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES
         for msg_id in TEXT_MESSAGES:
-            messages_to_delete.append(msg_id)
-        for msg_id in USER_MESSAGES:
-            messages_to_delete.append(msg_id)
+            try:
+                message = await client.get_messages(event.chat_id, ids=msg_id)
+                if message and not message.media:  # Удаляем только текстовые сообщения
+                    messages_to_delete.append(msg_id)
+            except Exception as e:
+                logger.error(f"Failed to get message {msg_id}: {str(e)}")
+                continue
 
-        # delete traced messages
+        # Удаляем отслеживаемые сообщения
         try:
             await client.delete_messages(event.chat_id, messages_to_delete)
         except FloodWaitError as e:
             await handle_flood_wait(event.chat_id, e.seconds)
 
-        # clear tracked messages ID's
+        # Очищаем отслеживаемые ID сообщений
         TEXT_MESSAGES.clear()
-        USER_MESSAGES.clear()
-
+        global last_flood_wait_message_time
+        last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
 
 
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        if not event.message.media:  # Check if the message does not contain media
-            USER_MESSAGES.append(event.id)
-        TEXT_MESSAGES.append(event.id)  # Track all messages
+        if not event.message.media:  # Проверяем, что сообщение не содержит медиа
+            TEXT_MESSAGES.append(event.id)  # Отслеживаем только текстовые сообщения
+        USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
