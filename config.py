@@ -38,9 +38,13 @@ TELEGRAM_BOT_TOKEN = "xxx"
 # Your Telegram ID (to restrict access to bot only from your account)
 TELEGRAM_USER_ID = xxx
 
-# Your Telegram API app (because standard BotFather bot has 50mb limit of sended files)
-API_ID = 'xxx'
-API_HASH = 'xxx'
+# Your Telegram API apps (because standard BotFather bot has 50mb limit of sended files)
+API_KEYS = [
+    {'API_ID': 'xxx1', 'API_HASH': 'xxx1'},
+    {'API_ID': 'xxx2', 'API_HASH': 'xxx2'},
+    # Добавьте столько пар, сколько необходимо
+]
+
 
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
