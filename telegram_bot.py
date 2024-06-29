@@ -1,7 +1,6 @@
 import os
 import re
 import math
-import time
 import asyncio
 import subprocess
 import requests
@@ -24,7 +23,6 @@ aiogram_bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher(aiogram_bot)
 
 current_split_process = None
-last_flood_wait_message_time = None
 
 # Path to the main script
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
@@ -68,10 +66,10 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         while attempts < 5:
             try:
                 msg = await client.send_file(chat_id, file_path, caption=tag)
-                USER_MESSAGES.append(msg.id)  # Сохраняем ID сообщения в USER_MESSAGES, а не в TEXT_MESSAGES
+                TEXT_MESSAGES.append(msg.id)  # Save message ID
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
-                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
+                        pass  # Open in write mode to make file empty
                 break
             except FloodWaitError as e:
                 await handle_flood_wait(chat_id, e.seconds)
@@ -79,11 +77,9 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
             except ValueError as e:
                 logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
                 attempts += 1
-                await asyncio.sleep(5)  # Ждем перед повторной попыткой
+                await asyncio.sleep(5)  # Wait before retrying
         else:
             await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
-
-
 
 def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
     global current_split_process
@@ -127,19 +123,18 @@ async def split_and_send_large_file(chat_id, file_path, tag):
         await send_file_and_replace_with_empty(chat_id, part_path, f"{tag} Part {i + 1}")
         os.remove(part_path)  # Remove part file after sending
 
+    # Replace original large file with an empty file or remove it
     if delete_media_from_server:
         with open(file_path, 'w') as f:
-            pass  # Открываем в режиме записи, чтобы сделать файл пустым
+            pass  # Open in write mode to make file empty
     else:
-        os.remove(file_path)  # Удаляем оригинальный большой файл
-
+        os.remove(file_path)  # Remove the original large file
 
     current_split_process = None  # Reset the process variable
 
 
 
-async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock):
-
+async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id):
     try:
         await split_and_send_large_file(chat_id, file_path, tag)
         if delete_media_from_server:
@@ -253,11 +248,11 @@ async def download_and_send_large_media(username, chat_id, tag, pinned_message_i
     TEXT_MESSAGES.append(download_complete_msg.id)
 
     semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)
-    lock = asyncio.Lock()  # Создайте объект Lock для синхронизации
-    remaining_files = [len(large_files)]  # Используйте список для изменяемого объекта
+    lock = asyncio.Lock()  # Ð¡Ð¾Ð·Ð´Ð°Ð¹ÑÐµ Ð¾Ð±ÑÐµÐºÑ Lock Ð´Ð»Ñ ÑÐ¸Ð½ÑÑÐ¾Ð½Ð¸Ð·Ð°ÑÐ¸Ð¸
+    remaining_files = [len(large_files)]  # ÐÑÐ¿Ð¾Ð»ÑÐ·ÑÐ¹ÑÐµ ÑÐ¿Ð¸ÑÐ¾Ðº Ð´Ð»Ñ Ð¸Ð·Ð¼ÐµÐ½ÑÐµÐ¼Ð¾Ð³Ð¾ Ð¾Ð±ÑÐµÐºÑÐ°
 
     for file_path in large_files:
-        tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
+        tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id))
 
     await asyncio.gather(*tasks)
 
@@ -502,44 +497,56 @@ async def load_command_usage(event):
         msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
         TEXT_MESSAGES.append(msg.id)
 
-@dp.message_handler(commands=['load'])
-async def load_command(message):
-    if message.from_user.id != TELEGRAM_USER_ID:
-        msg = await send_message_with_retry(message.chat.id, "Unauthorized access.")
-        if msg:
-            USER_MESSAGES.append(msg.message_id)
-        logger.warning(f"Unauthorized access denied for {message.from_user.id}.")
+@client.on(events.NewMessage(pattern='/load (.+)'))
+async def load_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
-    args = message.text.split()[1:]
-    if not args:
-        msg = await send_message_with_retry(message.chat.id, "Usage: /load <username or subscription number> <max_age (optional)>")
-        if msg:
-            USER_MESSAGES.append(msg.message_id)
-        return
-
+    args = event.pattern_match.group(1).strip().split()
     target = args[0]
-    max_age = args[1] if len(args) > 1 and args[1].isdigit() else None
-    command = ['python3', ONLYFANS_DL_SCRIPT, target]
-    if max_age:
-        command.append(max_age)
+    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+    tag = f"#{target}"
 
     try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate()
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
 
-        if process.returncode == 0:
-            msg = await send_message_with_retry(message.chat.id, f"Download completed for {target}.")
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+            tag = f"#{username}"
         else:
-            msg = await send_message_with_retry(message.chat.id, f"Download failed for {target}. Error: {stderr}")
-        
-        if msg:
-            USER_MESSAGES.append(msg.message_id)
-    except Exception as e:
-        logger.error(f"Failed to execute download command for {target}: {str(e)}")
-        msg = await send_message_with_retry(message.chat.id, f"Failed to execute download command for {target}. Error: {str(e)}")
-        if msg:
-            USER_MESSAGES.append(msg.message_id)
+            username = target
+            tag = f"#{target}"
+
+        if username not in [sub.strip() for sub in subscriptions]:
+            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
+            USER_MESSAGES.append(msg.id)
+            return
+    except (IndexError, FileNotFoundError):
+        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+        USER_MESSAGES.append(msg.id)
+        return
+
+    if not os.path.exists(username):
+        os.makedirs(username)
+        msg = await event.respond(f"User directory {username} not found. Starting a fresh download. {tag}")
+        USER_MESSAGES.append(msg.id)
+
+    try:
+        msg = await event.respond(f"Started downloading media to server for {username} {tag}")
+        TEXT_MESSAGES.append(msg.id)
+
+        await download_media_without_sending(username, event.chat_id, tag, max_age)
+    except FloodWaitError as e:
+        wait_time = e.seconds
+        await event.respond(f"FloodWaitError: Please wait for {wait_time} seconds before retrying.")
+
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -649,25 +656,19 @@ def send_fallback_message(chat_id, message):
         logger.error(f"Failed to send fallback message: {response.text}")
 
 async def handle_flood_wait(chat_id, wait_time):
-    global last_flood_wait_message_time
-    current_time = time.time()
-
-    if last_flood_wait_message_time is None or current_time - last_flood_wait_message_time > 60:
-        last_flood_wait_message_time = current_time
-        message = f"FloodWaitError: Please wait for {wait_time} seconds."
-        try:
-            msg = await aiogram_bot.send_message(chat_id, message)
-            TEXT_MESSAGES.append(msg.message_id)
-        except aiogram_exceptions.BotBlocked:
-            logger.error(f"Target [ID:{chat_id}]: blocked by user")
-        except aiogram_exceptions.ChatNotFound:
-            logger.error(f"Target [ID:{chat_id}]: invalid user ID")
-        except aiogram_exceptions.RetryAfter as e:
-            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
-            await asyncio.sleep(e.timeout)
-            return await handle_flood_wait(chat_id, wait_time)
-        except aiogram_exceptions.TelegramAPIError:
-            logger.exception(f"Target [ID:{chat_id}]: failed")
+    message = f"FloodWaitError: Please wait for {wait_time} seconds."
+    try:
+        await aiogram_bot.send_message(chat_id, message)
+    except aiogram_exceptions.BotBlocked:
+        logger.error(f"Target [ID:{chat_id}]: blocked by user")
+    except aiogram_exceptions.ChatNotFound:
+        logger.error(f"Target [ID:{chat_id}]: invalid user ID")
+    except aiogram_exceptions.RetryAfter as e:
+        logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
+        await asyncio.sleep(e.timeout)
+        return await handle_flood_wait(chat_id, wait_time)
+    except aiogram_exceptions.TelegramAPIError:
+        logger.exception(f"Target [ID:{chat_id}]: failed")
     await asyncio.sleep(wait_time)
 
 
@@ -840,37 +841,33 @@ async def clear_command(event):
     if event.sender_id == TELEGRAM_USER_ID:
         messages_to_delete = []
 
-        # Добавляем идентификатор, чтобы удалить это сообщение
+        # add identificator to clear this message
         messages_to_delete.append(event.id)
 
-        # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES
+        # get all tracked messages
         for msg_id in TEXT_MESSAGES:
-            try:
-                message = await client.get_messages(event.chat_id, ids=msg_id)
-                if message and not message.media:  # Удаляем только текстовые сообщения
-                    messages_to_delete.append(msg_id)
-            except:
-                continue
+            messages_to_delete.append(msg_id)
+        for msg_id in USER_MESSAGES:
+            messages_to_delete.append(msg_id)
 
-        # Удаляем отслеживаемые сообщения
+        # delete traced messages
         try:
             await client.delete_messages(event.chat_id, messages_to_delete)
         except FloodWaitError as e:
             await handle_flood_wait(event.chat_id, e.seconds)
 
-        # Очищаем отслеживаемые ID сообщений
+        # clear tracked messages ID's
         TEXT_MESSAGES.clear()
-        global last_flood_wait_message_time
-        last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
+        USER_MESSAGES.clear()
+
 
 
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        if not event.message.media:  # Проверяем, что сообщение не содержит медиа
-            TEXT_MESSAGES.append(event.id)  # Отслеживаем только текстовые сообщения
-        USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
-
+        if not event.message.media:  # Check if the message does not contain media
+            USER_MESSAGES.append(event.id)
+        TEXT_MESSAGES.append(event.id)  # Track all messages
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
