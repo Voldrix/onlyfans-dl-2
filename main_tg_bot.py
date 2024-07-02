@@ -12,14 +12,14 @@ from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
 from file_uploader import download_and_send_media, download_and_send_large_media, download_media_without_sending, handle_flood_wait, load_sent_files, send_message_with_retry
-from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_api_key, logger, current_split_process, processes, LAST_MESSAGE_CONTENT
-
+from shared import aiogram_bot, client, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT
 
 # Initialize aiogram bot
 dp = Dispatcher(aiogram_bot)
 
+
 def send_fallback_message(chat_id, message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
     data = {
         "chat_id": chat_id,
         "text": message
@@ -81,7 +81,6 @@ async def get_command(event):
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
 
-
 @client.on(events.NewMessage(pattern='/get_big$'))
 async def get_big_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
@@ -120,7 +119,6 @@ async def get_big_command(event):
         await handle_flood_wait(event.chat_id, wait_time, client)
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
-
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
@@ -176,7 +174,6 @@ async def load_command(event):
             await download_media_without_sending(username, event.chat_id, tag, max_age)
         else:
             await download_media_without_sending(username, event.chat_id, tag, 0)
-
 
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
@@ -282,9 +279,6 @@ async def erase_command(event):
     # delete user folder from server
     if os.path.exists(username):
         subprocess.call(['rm', '-rf', username])
-
-
-
 
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
@@ -443,22 +437,18 @@ async def clear_command(event):
         global last_flood_wait_message_time
         last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
 
+@client.on(events.NewMessage(pattern='/switch$'))
+async def switch_command(event):
+    if event.sender_id == TELEGRAM_USER_ID:
+        switch_bot_token()
+        await event.respond("Switched to the next bot token.")
 
 @client.on(events.NewMessage(pattern='/restart'))
 async def restart_command(event):
-    global current_split_process
     try:
         if event.sender_id == TELEGRAM_USER_ID:
-            if current_split_process:
-                current_split_process.terminate()
-                current_split_process.wait()
-                current_split_process = None
-                await event.respond("Current process is stopped. Telegram bot is restarting.")
-            else:
-                await event.respond("No process is running. Telegram bot is restarting")
-            # Restart the bot by restarting the script
-            os.system("pkill -f main_tg_bot.py")  # Kills the script
-            os.system("python3 main_tg_bot.py &")  # Restarts the script
+            await event.respond("Telegram bot is restarting.")
+            os.execv(sys.executable, ['python3'] + sys.argv)
     except FloodWaitError as e:
         wait_time = e.seconds
         await handle_flood_wait(event.chat_id, wait_time, client)
@@ -502,6 +492,7 @@ async def setup_aiogram_bot_commands(dp: Dispatcher):
         {"command": "del", "description": "Delete profile folder from server"},
         {"command": "clear", "description": "Clear non-media messages in chat"},
         {"command": "restart", "description": "Stop current process and restart bot"},
+        {"command": "switch", "description": "Switch to next bot token"},
         {"command": "user_id", "description": "Update USER_ID"},
         {"command": "user_agent", "description": "Update USER_AGENT"},
         {"command": "x_bc", "description": "Update X_BC"},
