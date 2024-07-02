@@ -56,41 +56,16 @@ async def get_command(event):
         logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
-    args = event.pattern_match.group(1).strip().split()
-    target = args[0]
-    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+    target = event.pattern_match.group(1).strip()
     tag = f"#{target}"
 
-    try:
-        with open("subscriptions_list.txt", "r") as f:
-            subscriptions = f.readlines()
-
-        if target.isdigit():
-            target_index = int(target) - 1
-            if target_index < 0 or target_index >= len(subscriptions):
-                raise IndexError
-            username = subscriptions[target_index].strip()
-            tag = f"#{username}"
-        else:
-            username = target
-            tag = f"#{target}"
-
-        if username not in [sub.strip() for sub in subscriptions]:
-            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
-            USER_MESSAGES.append(msg.id)
-            return
-    except (IndexError, FileNotFoundError):
-        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+    if not os.path.exists(target):
+        msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
         USER_MESSAGES.append(msg.id)
         return
 
-    if not os.path.exists(username):
-        os.makedirs(username)
-        msg = await event.respond(f"User directory {username} not found. Starting a fresh download. {tag}")
-        USER_MESSAGES.append(msg.id)
-
     try:
-        pinned_message = await event.respond(f"Started downloading media for {username} {tag}")
+        pinned_message = await event.respond(f"Started sending media for {target} {tag}")
         TEXT_MESSAGES.append(pinned_message.id)
         pinned_message_id = pinned_message.id
         await client(UpdatePinnedMessageRequest(
@@ -99,12 +74,13 @@ async def get_command(event):
             silent=True
         ))
 
-        await download_and_send_media(username, event.chat_id, tag, pinned_message_id, max_age, event, client)
+        await download_and_send_media(target, event.chat_id, tag, pinned_message_id, 0, event, client)
     except FloodWaitError as e:
         wait_time = e.seconds
         await handle_flood_wait(event.chat_id, wait_time, client)
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/get_big$'))
 async def get_big_command_usage(event):
@@ -120,41 +96,16 @@ async def get_big_command(event):
         logger.warning(f"Unauthorized access denied for {event.sender_id}.")
         return
 
-    args = event.pattern_match.group(1).strip().split()
-    target = args[0]
-    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+    target = event.pattern_match.group(1).strip()
     tag = f"#{target}"
 
-    try:
-        with open("subscriptions_list.txt", "r") as f:
-            subscriptions = f.readlines()
-
-        if target.isdigit():
-            target_index = int(target) - 1
-            if target_index < 0 or target_index >= len(subscriptions):
-                raise IndexError
-            username = subscriptions[target_index].strip()
-            tag = f"#{username}"
-        else:
-            username = target
-            tag = f"#{target}"
-
-        if username not in [sub.strip() for sub in subscriptions]:
-            msg = await event.respond(f"User {username} not found in the subscriptions list. {tag}")
-            USER_MESSAGES.append(msg.id)
-            return
-    except (IndexError, FileNotFoundError):
-        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+    if not os.path.exists(target):
+        msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
         USER_MESSAGES.append(msg.id)
         return
 
-    if not os.path.exists(username):
-        os.makedirs(username)
-        msg = await event.respond(f"User directory {username} not found. Starting a fresh download. {tag}")
-        USER_MESSAGES.append(msg.id)
-
     try:
-        pinned_message = await event.respond(f"Started downloading large media for {username} {tag}")
+        pinned_message = await event.respond(f"Started sending large media for {target} {tag}")
         TEXT_MESSAGES.append(pinned_message.id)
         pinned_message_id = pinned_message.id
         await client(UpdatePinnedMessageRequest(
@@ -163,12 +114,13 @@ async def get_big_command(event):
             silent=True
         ))
 
-        await download_and_send_large_media(username, event.chat_id, tag, pinned_message_id, max_age, event, client)
+        await download_and_send_large_media(target, event.chat_id, tag, pinned_message_id, 0, event, client)
     except FloodWaitError as e:
         wait_time = e.seconds
         await handle_flood_wait(event.chat_id, wait_time, client)
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
@@ -183,12 +135,8 @@ async def load_command(event):
         return
 
     args = event.pattern_match.group(1).strip().split()
-    if not args:
-        await send_message_with_retry(event.chat_id, "Usage: /load <username or subscription number> <max_age (optional)>")
-        return
-
     target = args[0]
-    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+    max_age = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
     tag = f"#{target}"
 
     try:
@@ -218,10 +166,17 @@ async def load_command(event):
 
     try:
         await send_message_with_retry(event.chat_id, f"Started downloading media to server for {username} {tag}")
-        await download_media_without_sending(username, event.chat_id, tag, max_age)
+        if max_age is not None:
+            await download_media_without_sending(username, event.chat_id, tag, max_age)
+        else:
+            await download_media_without_sending(username, event.chat_id, tag, 0)
     except aiogram_exceptions.RetryAfter as e:
         await asyncio.sleep(e.timeout)
-        await download_media_without_sending(username, event.chat_id, tag, max_age)
+        if max_age is not None:
+            await download_media_without_sending(username, event.chat_id, tag, max_age)
+        else:
+            await download_media_without_sending(username, event.chat_id, tag, 0)
+
 
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
