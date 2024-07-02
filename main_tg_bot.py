@@ -12,7 +12,7 @@ from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
 from file_uploader import download_and_send_media, download_and_send_large_media, download_media_without_sending, handle_flood_wait, load_sent_files, send_message_with_retry
-from shared import aiogram_bot, client, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT
+from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT  # Ensure processes is imported
 
 # Initialize aiogram bot
 dp = Dispatcher(aiogram_bot)
@@ -48,77 +48,11 @@ async def get_command_usage(event):
         msg = await event.respond("Usage: /get <username or subscription number>")
         TEXT_MESSAGES.append(msg.id)
 
-@client.on(events.NewMessage(pattern='/get (.+)'))
-async def get_command(event):
-    if event.sender_id != TELEGRAM_USER_ID:
-        msg = await event.respond("Unauthorized access.")
-        USER_MESSAGES.append(msg.id)
-        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
-        return
-
-    target = event.pattern_match.group(1).strip()
-    tag = f"#{target}"
-
-    if not os.path.exists(target):
-        msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
-        USER_MESSAGES.append(msg.id)
-        return
-
-    try:
-        pinned_message = await event.respond(f"Started sending media for {target} {tag}")
-        TEXT_MESSAGES.append(pinned_message.id)
-        pinned_message_id = pinned_message.id
-        await client(UpdatePinnedMessageRequest(
-            peer=event.chat_id,
-            id=pinned_message_id,
-            silent=True
-        ))
-
-        await download_and_send_media(target, event.chat_id, tag, pinned_message_id, 0, event, client)
-    except FloodWaitError as e:
-        wait_time = e.seconds
-        await handle_flood_wait(event.chat_id, wait_time, client)
-    except Exception as e:
-        await event.respond(f"Unexpected error occurred: {str(e)}")
-
 @client.on(events.NewMessage(pattern='/get_big$'))
 async def get_big_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         msg = await event.respond("Usage: /get_big <username or subscription number>")
         TEXT_MESSAGES.append(msg.id)
-
-@client.on(events.NewMessage(pattern='/get_big (.+)'))
-async def get_big_command(event):
-    if event.sender_id != TELEGRAM_USER_ID:
-        msg = await event.respond("Unauthorized access.")
-        USER_MESSAGES.append(msg.id)
-        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
-        return
-
-    target = event.pattern_match.group(1).strip()
-    tag = f"#{target}"
-
-    if not os.path.exists(target):
-        msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
-        USER_MESSAGES.append(msg.id)
-        return
-
-    try:
-        pinned_message = await event.respond(f"Started sending large media for {target} {tag}")
-        TEXT_MESSAGES.append(pinned_message.id)
-        pinned_message_id = pinned_message.id
-        await client(UpdatePinnedMessageRequest(
-            peer=event.chat_id,
-            id=pinned_message_id,
-            silent=True
-        ))
-
-        await download_and_send_large_media(target, event.chat_id, tag, pinned_message_id, 0, event, client)
-    except FloodWaitError as e:
-        wait_time = e.seconds
-        await handle_flood_wait(event.chat_id, wait_time, client)
-    except Exception as e:
-        await event.respond(f"Unexpected error occurred: {str(e)}")
 
 @client.on(events.NewMessage(pattern='/load$'))
 async def load_command_usage(event):
@@ -174,6 +108,75 @@ async def load_command(event):
             await download_media_without_sending(username, event.chat_id, tag, max_age)
         else:
             await download_media_without_sending(username, event.chat_id, tag, 0)
+
+
+@client.on(events.NewMessage(pattern='/get (.+)'))
+async def get_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+        return
+
+    target = event.pattern_match.group(1).strip()
+    tag = f"#{target}"
+
+    if not os.path.exists(target):
+        msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
+        USER_MESSAGES.append(msg.id)
+        return
+
+    try:
+        pinned_message = await event.respond(f"Started sending media for {target} {tag}")
+        TEXT_MESSAGES.append(pinned_message.id)
+        pinned_message_id = pinned_message.id
+        await client(UpdatePinnedMessageRequest(
+            peer=event.chat_id,
+            id=pinned_message_id,
+            silent=True
+        ))
+
+        await download_and_send_media(target, event.chat_id, tag, pinned_message_id, 0, event, client)
+    except FloodWaitError as e:
+        wait_time = e.seconds
+        await handle_flood_wait(event.chat_id, wait_time, client)
+    except Exception as e:
+        await event.respond(f"Unexpected error occurred: {str(e)}")
+
+
+@client.on(events.NewMessage(pattern='/get_big (.+)'))
+async def get_big_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+        return
+
+    target = event.pattern_match.group(1).strip()
+    tag = f"#{target}"
+
+    if not os.path.exists(target):
+        msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
+        USER_MESSAGES.append(msg.id)
+        return
+
+    try:
+        pinned_message = await event.respond(f"Started sending large media for {target} {tag}")
+        TEXT_MESSAGES.append(pinned_message.id)
+        pinned_message_id = pinned_message.id
+        await client(UpdatePinnedMessageRequest(
+            peer=event.chat_id,
+            id=pinned_message_id,
+            silent=True
+        ))
+
+        await download_and_send_large_media(target, event.chat_id, tag, pinned_message_id, 0, event, client)
+    except FloodWaitError as e:
+        wait_time = e.seconds
+        await handle_flood_wait(event.chat_id, wait_time, client)
+    except Exception as e:
+        await event.respond(f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
