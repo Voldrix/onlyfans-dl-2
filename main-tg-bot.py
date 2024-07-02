@@ -303,23 +303,33 @@ async def erase_command(event):
 
     message_ids_to_delete = []
 
-    for msg_id in TEXT_MESSAGES:
-        message = await client.get_messages(event.chat_id, ids=msg_id)
-        if message and f"#{username}" in message.message:
-            message_ids_to_delete.append(msg_id)
+    for msg_id in TEXT_MESSAGES + USER_MESSAGES:
+        try:
+            message = await client.get_messages(event.chat_id, ids=msg_id)
+            if message and tag in message.message:
+                message_ids_to_delete.append(msg_id)
+        except:
+            continue
 
     if message_ids_to_delete:
         try:
             await client.delete_messages(event.chat_id, message_ids_to_delete)
-            msg = await event.respond(f"All messages with tag #{username} have been erased.")
+            msg = await event.respond(f"All messages and media with tag {tag} have been erased.")
             USER_MESSAGES.append(msg.id)
         except Exception as e:
             logger.error(f"Failed to delete messages: {str(e)}")
             msg = await event.respond("Failed to delete messages.")
             USER_MESSAGES.append(msg.id)
     else:
-        msg = await event.respond(f"No messages with tag #{username} found.")
+        msg = await event.respond(f"No messages or media with tag {tag} found.")
         USER_MESSAGES.append(msg.id)
+
+    # delete user folder from server
+    if os.path.exists(username):
+        subprocess.call(['rm', '-rf', username])
+
+
+
 
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
@@ -457,8 +467,8 @@ async def clear_command(event):
         # Добавляем идентификатор, чтобы удалить это сообщение
         messages_to_delete.append(event.id)
 
-        # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES
-        for msg_id in TEXT_MESSAGES:
+        # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES и USER_MESSAGES
+        for msg_id in TEXT_MESSAGES + USER_MESSAGES:
             try:
                 message = await client.get_messages(event.chat_id, ids=msg_id)
                 if message and not message.media:  # Удаляем только текстовые сообщения
@@ -477,6 +487,7 @@ async def clear_command(event):
         USER_MESSAGES.clear()
         global last_flood_wait_message_time
         last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
+
 
 @client.on(events.NewMessage(pattern='/restart'))
 async def restart_command(event):
