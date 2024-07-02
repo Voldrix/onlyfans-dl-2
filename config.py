@@ -48,6 +48,8 @@ API_KEYS = [
 
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
+TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024 * 1024  # 2 GB
+ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
 
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram
 MAX_PARALLEL_DOWNLOADS = 400 
