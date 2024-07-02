@@ -156,8 +156,13 @@ async def download_file(session, url, dest_path):
                 if not chunk:
                     break
                 f.write(chunk)
-    os.rename(temp_path, dest_path)
+    # Проверяем существование временного файла перед переименованием
+    if os.path.exists(temp_path):
+        os.rename(temp_path, dest_path)
+    else:
+        print(f"Temp file {temp_path} not found. Unable to rename.")
     return True
+
 
 async def download_media(media, subtype, postdate, album=''):
     filename = f"{postdate}_{media['id']}"
