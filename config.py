@@ -34,19 +34,18 @@ MESSAGES = True
 ARCHIVED = True
 PURCHASED = True
 
-# Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "xxx"
+# Telegram Bot Tokens
+TELEGRAM_BOT_TOKENS = ["xxx", "yyy"]  # добавьте столько токенов, сколько необходимо
+
+# Current active bot index
+current_bot_index = 0  # по умолчанию активен первый бот
+
+# Your Telegram API app
+API_ID = 'xxx'
+API_HASH = 'xxx'
 
 # Your Telegram ID (to restrict access to bot only from your account)
 TELEGRAM_USER_ID = xxx
-
-# Your Telegram API apps (because standard BotFather bot has 50mb limit of sended files)
-API_KEYS = [
-    {'API_ID': 'xxx1', 'API_HASH': 'xxx1'},
-    {'API_ID': 'xxx2', 'API_HASH': 'xxx2'},
-    # Добавьте столько пар, сколько необходимо
-]
-
 
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
@@ -58,7 +57,7 @@ MAX_PARALLEL_UPLOADS = 100
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  # or False
 
-# Verify lenght and format of cookie's values
+# Verify length and format of cookie's values
 def update_config(key, value):
     if key == "USER_ID":
         if not re.match(r'^\d{1,16}$', value):
@@ -73,7 +72,7 @@ def update_config(key, value):
         if not re.match(r'^[a-zA-Z0-9]{16,32}$', value): 
             raise ValueError("Invalid SESS_COOKIE format")
 
-  # Write new cookies to this file
+    # Write new cookies to this file
     with open(__file__, 'r') as f:
         config_content = f.read()
 
