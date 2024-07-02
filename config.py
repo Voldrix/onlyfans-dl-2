@@ -1,4 +1,6 @@
+# config.py
 import re
+import logging
 
 # Session Variables (update every time you login or your browser updates)
 USER_ID = "xxx"
