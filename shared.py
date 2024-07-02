@@ -19,6 +19,7 @@ client = TelegramClient('bot', API_ID, API_HASH).start(bot_token=TELEGRAM_BOT_TO
 TEXT_MESSAGES = []
 USER_MESSAGES = []
 LAST_MESSAGE_CONTENT = {}  # store the last content of messages
+processes = {}  # Add this line
 
 def switch_bot_token():
     global current_bot_index, client, aiogram_bot, dp
