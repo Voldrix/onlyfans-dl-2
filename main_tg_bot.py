@@ -45,7 +45,7 @@ def run_script(args):
 @client.on(events.NewMessage(pattern='/get$'))
 async def get_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /get <username or subscription number> <max_age (optional)>")
+        msg = await event.respond("Usage: /get <username or subscription number>")
         TEXT_MESSAGES.append(msg.id)
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
