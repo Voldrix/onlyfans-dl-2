@@ -12,9 +12,9 @@ from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
 from aiogram.utils import exceptions as aiogram_exceptions
-from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_api_key, logger, current_split_process, processes, LAST_MESSAGE_CONTENT
+from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT
 
-
+# Остальной код без изменений
 
 
 async def send_message_with_retry(chat_id, message):
@@ -53,7 +53,7 @@ async def handle_flood_wait(chat_id, wait_time, client):
 
     if last_flood_wait_message_time is None or current_time - last_flood_wait_message_time > 60:
         last_flood_wait_message_time = current_time
-        message = f"FloodWaitError: Please wait for {wait_time} seconds. Switching API key."
+        message = f"FloodWaitError: Please wait for {wait_time} seconds. Switching bot token."
         try:
             msg = await aiogram_bot.send_message(chat_id, message)
             TEXT_MESSAGES.append(msg.message_id)
@@ -68,7 +68,7 @@ async def handle_flood_wait(chat_id, wait_time, client):
         except aiogram_exceptions.TelegramAPIError:
             logger.exception(f"Target [ID:{chat_id}]: failed")
     await asyncio.sleep(wait_time)
-    switch_api_key()
+    switch_bot_token()
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
