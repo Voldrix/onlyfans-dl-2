@@ -77,7 +77,7 @@ async def send_message_with_retry(chat_id, message):
             attempts += 1
             await asyncio.sleep(5)
 
-# ÐÐ¾Ð´ Ð² Ð½Ð°ÑÐ°Ð»Ðµ ÑÐ°Ð¹Ð»Ð° Ð´Ð»Ñ ÑÐ¼ÐµÐ½Ñ API ÐºÐ»ÑÑÐ°
+# Код в начале файла для смены API ключа
 def switch_api_key():
     global current_api_index, client
     current_api_index = (current_api_index + 1) % len(API_KEYS)
@@ -96,10 +96,10 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
         while attempts < 5:
             try:
                 msg = await client.send_file(chat_id, file_path, caption=tag)
-                USER_MESSAGES.append(msg.id)  # Ð¡Ð¾ÑÑÐ°Ð½ÑÐµÐ¼ ID ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ Ð² USER_MESSAGES, Ð° Ð½Ðµ Ð² TEXT_MESSAGES
+                USER_MESSAGES.append(msg.id)  # Сохраняем ID сообщения в USER_MESSAGES, а не в TEXT_MESSAGES
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
-                        pass  # ÐÑÐºÑÑÐ²Ð°ÐµÐ¼ Ð² ÑÐµÐ¶Ð¸Ð¼Ðµ Ð·Ð°Ð¿Ð¸ÑÐ¸, ÑÑÐ¾Ð±Ñ ÑÐ´ÐµÐ»Ð°ÑÑ ÑÐ°Ð¹Ð» Ð¿ÑÑÑÑÐ¼
+                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
                 break
             except FloodWaitError as e:
                 await handle_flood_wait(chat_id, e.seconds)
@@ -107,11 +107,11 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag):
             except ValueError as e:
                 logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
                 attempts += 1
-                await asyncio.sleep(5)  # ÐÐ´ÐµÐ¼ Ð¿ÐµÑÐµÐ´ Ð¿Ð¾Ð²ÑÐ¾ÑÐ½Ð¾Ð¹ Ð¿Ð¾Ð¿ÑÑÐºÐ¾Ð¹
+                await asyncio.sleep(5)  # Ждем перед повторной попыткой
         else:
             await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
 
-# ÐÐ±ÑÐ°Ð±Ð¾ÑÐºÐ° FloodWaitError
+# Обработка FloodWaitError
 async def handle_flood_wait(chat_id, wait_time):
     global last_flood_wait_message_time
     current_time = time.time()
@@ -165,7 +165,7 @@ async def split_and_send_large_file(chat_id, file_path, tag):
     part_duration = duration / num_parts
 
     base_name, ext = os.path.splitext(file_path)
-    
+
     await client.send_message(chat_id, f"Detected large file: {os.path.basename(file_path)}, Size: {file_size/(1024*1024):.2f} MB, Splitting into {num_parts} parts")
 
     for i in range(num_parts):
@@ -190,9 +190,9 @@ async def split_and_send_large_file(chat_id, file_path, tag):
 
     if delete_media_from_server:
         with open(file_path, 'w') as f:
-            pass  # ÐÑÐºÑÑÐ²Ð°ÐµÐ¼ Ð² ÑÐµÐ¶Ð¸Ð¼Ðµ Ð·Ð°Ð¿Ð¸ÑÐ¸, ÑÑÐ¾Ð±Ñ ÑÐ´ÐµÐ»Ð°ÑÑ ÑÐ°Ð¹Ð» Ð¿ÑÑÑÑÐ¼
+            pass  # Открываем в режиме записи, чтобы сделать файл пустым
     else:
-        os.remove(file_path)  # Ð£Ð´Ð°Ð»ÑÐµÐ¼ Ð¾ÑÐ¸Ð³Ð¸Ð½Ð°Ð»ÑÐ½ÑÐ¹ Ð±Ð¾Ð»ÑÑÐ¾Ð¹ ÑÐ°Ð¹Ð»
+        os.remove(file_path)  # Удаляем оригинальный большой файл
 
     current_split_process = None  # Reset the process variable
 
@@ -373,8 +373,8 @@ async def download_and_send_large_media(username, chat_id, tag, pinned_message_i
     TEXT_MESSAGES.append(download_complete_msg.id)
 
     semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)
-    lock = asyncio.Lock()  # Ð¡Ð¾Ð·Ð´Ð°Ð¹ÑÐµ Ð¾Ð±ÑÐµÐºÑ Lock Ð´Ð»Ñ ÑÐ¸Ð½ÑÑÐ¾Ð½Ð¸Ð·Ð°ÑÐ¸Ð¸
-    remaining_files = [len(large_files)]  # ÐÑÐ¿Ð¾Ð»ÑÐ·ÑÐ¹ÑÐµ ÑÐ¿Ð¸ÑÐ¾Ðº Ð´Ð»Ñ Ð¸Ð·Ð¼ÐµÐ½ÑÐµÐ¼Ð¾Ð³Ð¾ Ð¾Ð±ÑÐµÐºÑÐ°
+    lock = asyncio.Lock()  # Создайте объект Lock для синхронизации
+    remaining_files = [len(large_files)]  # Используйте список для изменяемого объекта
 
     for file_path in large_files:
         tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock))
@@ -884,40 +884,40 @@ async def sess_cookie_command(event):
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     if event.sender_id == TELEGRAM_USER_ID:
-        if not event.message.media:  # ÐÑÐ¾Ð²ÐµÑÑÐµÐ¼, ÑÑÐ¾ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ðµ Ð½Ðµ ÑÐ¾Ð´ÐµÑÐ¶Ð¸Ñ Ð¼ÐµÐ´Ð¸Ð°
+        if not event.message.media:  # Проверяем, что сообщение не содержит медиа
             USER_MESSAGES.append(event.id)
-            TEXT_MESSAGES.append(event.id)  # ÐÑÑÐ»ÐµÐ¶Ð¸Ð²Ð°ÐµÐ¼ ÑÐ¾Ð»ÑÐºÐ¾ ÑÐµÐºÑÑÐ¾Ð²ÑÐµ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ
+            TEXT_MESSAGES.append(event.id)  # Отслеживаем только текстовые сообщения
         else:
-            USER_MESSAGES.append(event.id)  # ÐÑÑÐ»ÐµÐ¶Ð¸Ð²Ð°ÐµÐ¼ Ð²ÑÐµ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ Ð´Ð»Ñ ÑÐ´Ð°Ð»ÐµÐ½Ð¸Ñ Ð¿Ð¾ ÐºÐ¾Ð¼Ð°Ð½Ð´Ðµ /clear
+            USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
 
 @client.on(events.NewMessage(pattern='/clear'))
 async def clear_command(event):
     if event.sender_id == TELEGRAM_USER_ID:
         messages_to_delete = []
 
-        # ÐÐ¾Ð±Ð°Ð²Ð»ÑÐµÐ¼ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ, ÑÑÐ¾Ð±Ñ ÑÐ´Ð°Ð»Ð¸ÑÑ ÑÑÐ¾ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ðµ
+        # Добавляем идентификатор, чтобы удалить это сообщение
         messages_to_delete.append(event.id)
 
-        # Ð£Ð´Ð°Ð»ÑÐµÐ¼ ÑÐ¾Ð»ÑÐºÐ¾ ÑÐµÐºÑÑÐ¾Ð²ÑÐµ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ, Ð¾ÑÑÐ»ÐµÐ¶Ð¸Ð²Ð°ÐµÐ¼ÑÐµ Ð² TEXT_MESSAGES
+        # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES
         for msg_id in TEXT_MESSAGES:
             try:
                 message = await client.get_messages(event.chat_id, ids=msg_id)
-                if message and not message.media:  # Ð£Ð´Ð°Ð»ÑÐµÐ¼ ÑÐ¾Ð»ÑÐºÐ¾ ÑÐµÐºÑÑÐ¾Ð²ÑÐµ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ
+                if message and not message.media:  # Удаляем только текстовые сообщения
                     messages_to_delete.append(msg_id)
             except:
                 continue
 
-        # Ð£Ð´Ð°Ð»ÑÐµÐ¼ Ð¾ÑÑÐ»ÐµÐ¶Ð¸Ð²Ð°ÐµÐ¼ÑÐµ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ
+        # Удаляем отслеживаемые сообщения
         try:
             await client.delete_messages(event.chat_id, messages_to_delete)
         except FloodWaitError as e:
             await handle_flood_wait(event.chat_id, e.seconds)
 
-        # ÐÑÐ¸ÑÐ°ÐµÐ¼ Ð¾ÑÑÐ»ÐµÐ¶Ð¸Ð²Ð°ÐµÐ¼ÑÐµ ID ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ð¹
+        # Очищаем отслеживаемые ID сообщений
         TEXT_MESSAGES.clear()
         USER_MESSAGES.clear()
         global last_flood_wait_message_time
-        last_flood_wait_message_time = None  # Ð¡Ð±ÑÐ°ÑÑÐ²Ð°ÐµÐ¼ ÑÐ°Ð¹Ð¼ÐµÑ FloodWaitError
+        last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
 
 @client.on(events.NewMessage(pattern='/stop'))
 async def stop_command(event):
