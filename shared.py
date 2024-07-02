@@ -17,6 +17,7 @@ client = TelegramClient('bot', API_KEYS[current_api_index]['API_ID'], API_KEYS[c
 
 TEXT_MESSAGES = []
 USER_MESSAGES = []
+LAST_MESSAGE_CONTENT = {}  # store the last content of messages
 
 def switch_api_key():
     global current_api_index, client
