@@ -54,7 +54,17 @@ To set up the environment and install necessary dependencies, follow these steps
     ```bash
     pip install -r requirements.txt
     ```
-
+8. **Fill in `user_config.py` file with your actual values:**
+    ```bash
+    USER_ID = "xxx"
+    USER_AGENT = "xxx"
+    X_BC = "xxx"
+    SESS_COOKIE = "xxx"
+    TELEGRAM_BOT_TOKENS = ["xxx", "yyy"]
+    API_ID = 'xxx'
+    API_HASH = 'xxx'
+    TELEGRAM_USER_ID = xxx
+    ```
 These commands will help you install all the necessary packages and programs for the correct operation of your script. Make sure you are working in the activated virtual environment to avoid conflicts with system packages.
 
 
@@ -70,7 +80,7 @@ These commands will help you install all the necessary packages and programs for
 First make sure to set your session variables in the `config.py` script and configure your options.
 
 To use in command line
-`python3 onlyfans-dl.py <--help/ --list / profiles / all> <max age (optional)>`
+`python3 onlyfans-dl.py < --help / --list / profiles / all > < max age (optional) >`
 * `<--help>` - print help message
 * `<--list>` - print list with usernames of profiles you are subscribed to. 
 * `<profiles>` - the usernames of profiles to download. Use "all" to get all currently subscribed profiles
@@ -78,7 +88,7 @@ To use in command line
   * `max age = 0` - sets max age to latest date from the filenames for each profile individually
 
 To use with Telegram Bot:
-`python3 telegram_bot.py` \
+`python3 main_tg_bot.py` \
 **Notes**: Telegram API not allow fast messeage flood, so telethon can't send all files at once. If you see in pinned message "Remaining files to send: XXX (not 0)" - just rerun /get XXX command.
 
 ## Session Variables

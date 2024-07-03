@@ -1,13 +1,8 @@
-# config.py
 import re
 import logging
+from user_config import *
 
-# Session Variables (update every time you login or your browser updates)
-USER_ID = "xxx"
-USER_AGENT = "xxx"
-X_BC = "xxx"
-SESS_COOKIE = "xxx"
-
+ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
 # 0 = do not print file names or api calls
 # 1 = print filenames only when max_age is set
 # 2 = always print filenames
@@ -20,45 +15,34 @@ DL_DIR = ''
 ByPass = ['']
 
 # Separate photos into subdirectories by post/album (Single photo posts are not put into subdirectories)
-ALBUMS = True
+ALBUMS = False #True
 # Use content type subfolders (messages/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
-USE_SUB_FOLDERS = True
+USE_SUB_FOLDERS = False #True
 
 # Content types to download
-VIDEOS = True
-PHOTOS = True
-AUDIO = True
-POSTS = True
-STORIES = True
-MESSAGES = True
-ARCHIVED = True
-PURCHASED = True
+VIDEOS = True #False
+PHOTOS = True #False
+AUDIO = True #False
+POSTS = True #False
+STORIES = True #False
+MESSAGES = True #False
+ARCHIVED = True #False
+PURCHASED = True #False
 
-# Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "xxx"
-
-# Your Telegram ID (to restrict access to bot only from your account)
-TELEGRAM_USER_ID = xxx
-
-# Your Telegram API apps (because standard BotFather bot has 50mb limit of sended files)
-API_KEYS = [
-    {'API_ID': 'xxx1', 'API_HASH': 'xxx1'},
-    {'API_ID': 'xxx2', 'API_HASH': 'xxx2'},
-    # Добавьте столько пар, сколько необходимо
-]
-
+# Current active bot index
+current_bot_index = 0  # по умолчанию активен первый бот
 
 # Size of disk space buffer you want to use on your server for temporary media saving
-CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
-
+CACHE_SIZE_LIMIT = 25000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
+TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram
 MAX_PARALLEL_DOWNLOADS = 400 
 MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
-delete_media_from_server = True  # or False
+delete_media_from_server = True  #False
 
-# Verify lenght and format of cookie's values
+# Verify length and format of cookie's values and update user_config.py
 def update_config(key, value):
     if key == "USER_ID":
         if not re.match(r'^\d{1,16}$', value):
@@ -73,11 +57,16 @@ def update_config(key, value):
         if not re.match(r'^[a-zA-Z0-9]{16,32}$', value): 
             raise ValueError("Invalid SESS_COOKIE format")
 
-  # Write new cookies to this file
-    with open(__file__, 'r') as f:
+    # Load current config
+    with open('user_config.py', 'r') as f:
         config_content = f.read()
 
+    # Update the value
     new_content = re.sub(f'{key} = ".*?"', f'{key} = "{value}"', config_content)
 
-    with open(__file__, 'w') as f:
+    # Write updated config back to file
+    with open('user_config.py', 'w') as f:
         f.write(new_content)
+
+    # Update global variable
+    globals()[key] = value
