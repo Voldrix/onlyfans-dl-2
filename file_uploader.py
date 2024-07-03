@@ -4,6 +4,7 @@ import re
 import math
 import time
 import asyncio
+import requests
 import subprocess
 import logging
 from PIL import Image
@@ -14,6 +15,39 @@ from config import *
 from aiogram.utils import exceptions as aiogram_exceptions
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes  # Add processes here
 
+last_flood_wait_message_time = None  # Инициализация глобальной переменной
+
+def send_fallback_message(chat_id, message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message
+    }
+    response = requests.post(url, data=data)
+    if response.status_code != 200:
+        logger.error(f"Failed to send fallback message: {response.text}")
+
+async def handle_flood_wait(event, wait_time, client):
+    message = f"FloodWaitError: A wait of {wait_time} seconds is required. Please use /switch to switch to another bot."
+    try:
+        await event.respond(message)
+    except FloodWaitError:
+        send_fallback_message(event.chat_id, message)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Error handling FloodWait: {str(e)}")
+
+async def handle_too_many_requests(event, response, client):
+    retry_after = response.json().get("parameters", {}).get("retry_after", 60)
+    message = f"Too Many Requests: retry after {retry_after} seconds. Please use /switch to switch to another bot."
+    try:
+        await event.respond(message)
+    except FloodWaitError:
+        send_fallback_message(event.chat_id, message)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Error handling Too Many Requests: {str(e)}")
+
+
+        
 async def send_message_with_retry(chat_id, message):
     attempts = 0
     while attempts < 5:
@@ -43,29 +77,6 @@ def save_sent_file(profile_dir, file_name):
     sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
     with open(sent_files_path, 'a') as f:
         f.write(file_name + '\n')
-
-async def handle_flood_wait(chat_id, wait_time, client):
-    global last_flood_wait_message_time
-    current_time = time.time()
-
-    if last_flood_wait_message_time is None or current_time - last_flood_wait_message_time > 60:
-        last_flood_wait_message_time = current_time
-        message = f"FloodWaitError: Please wait for {wait_time} seconds. Switching bot token."
-        try:
-            msg = await aiogram_bot.send_message(chat_id, message)
-            TEXT_MESSAGES.append(msg.message_id)
-        except aiogram_exceptions.BotBlocked:
-            logger.error(f"Target [ID:{chat_id}]: blocked by user")
-        except aiogram_exceptions.ChatNotFound:
-            logger.error(f"Target [ID:{chat_id}]: invalid user ID")
-        except aiogram_exceptions.RetryAfter as e:
-            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
-            await asyncio.sleep(e.timeout)
-            return await handle_flood_wait(chat_id, wait_time, client)
-        except aiogram_exceptions.TelegramAPIError:
-            logger.exception(f"Target [ID:{chat_id}]: failed")
-    await asyncio.sleep(wait_time)
-    switch_bot_token()
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -257,49 +268,25 @@ async def upload_with_semaphore(semaphore, process_file, *args):
     async with semaphore:
         await process_file(*args)
 
-async def download_and_send_media(username, chat_id, tag, pinned_message_id, max_age, event, client):
+async def send_existing_media(username, chat_id, tag, pinned_message_id, client):
     profile_dir = username
     new_files = []
-    total_files = 0
     large_files = []
     tasks = []
 
-    estimated_size = estimate_download_size(profile_dir)
-    if estimated_size > CACHE_SIZE_LIMIT:
-        await client.send_message(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
-        return
+    for dirpath, _, filenames in os.walk(profile_dir):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
+                if os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                    new_files.append(file_path)
+                else:
+                    large_files.append(file_path)
 
-    command = ['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)]
-    global current_split_process
-    current_split_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    processes[chat_id] = current_split_process
-
-    while True:
-        output = current_split_process.stdout.readline().strip()
-        if not output and current_split_process.poll() is not None:
-            break
-        if output:
-            logger.info(output)
-            if "Downloaded" in output and "new" in output:
-                for dirpath, _, filenames in os.walk(profile_dir):
-                    for filename in filenames:
-                        file_path = os.path.join(dirpath, filename)
-                        if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and file_path not in new_files and 'sent_files.txt' not in file_path:
-                            if os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
-                                new_files.append(file_path)
-                                total_files += 1
-                            else:
-                                large_files.append(file_path)
-
-    current_split_process.stdout.close()
-    current_split_process.stderr.close()
-    current_split_process = None
-    del processes[chat_id]
-
-    # Filter out already sent files
     sent_files = load_sent_files(profile_dir)
     new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
     large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
+
     total_files = len(new_files)
 
     if not new_files and not large_files:
@@ -315,14 +302,13 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
         ))
         LAST_MESSAGE_CONTENT[pinned_message_id] = f"Total new files to send: {total_files}. {tag}"
     except FloodWaitError as e:
-        wait_time = e.seconds
-        await handle_flood_wait(event.chat_id, wait_time, client)
+        await handle_flood_wait(event, e.seconds, client)
 
     download_complete_msg = await client.send_message(chat_id, f"Download was performed. {tag}")
     TEXT_MESSAGES.append(download_complete_msg.id)
 
-    remaining_files = [total_files]  # use list for changing object
-    lock = asyncio.Lock()  # create object Lock for synchronization
+    remaining_files = [total_files]
+    lock = asyncio.Lock()
 
     semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)
 
@@ -331,44 +317,28 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
 
     await asyncio.gather(*tasks)
 
-    # Notify about large files
     for file_path in large_files:
         file_name = os.path.basename(file_path)
         msg = await client.send_message(chat_id, f"Large file detected: {file_name}. Use /get_big to download.")
         TEXT_MESSAGES.append(msg.id)
 
-    # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
 
-async def download_and_send_large_media(username, chat_id, tag, pinned_message_id, max_age, event, client):
+async def send_existing_large_media(username, chat_id, tag, pinned_message_id, client):
     profile_dir = username
     large_files = []
     tasks = []
 
-    command = ['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)]
-    global current_split_process
-    current_split_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    processes[chat_id] = current_split_process
+    for dirpath, _, filenames in os.walk(profile_dir):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
+                if os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
+                    large_files.append(file_path)
 
-    while True:
-        output = current_split_process.stdout.readline().strip()
-        if not output and current_split_process.poll() is not None:
-            break
-        if output:
-            logger.info(output)
-            if "Downloaded" in output and "new" in output:
-                for dirpath, _, filenames in os.walk(profile_dir):
-                    for filename in filenames:
-                        file_path = os.path.join(dirpath, filename)
-                        if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and file_path not in large_files and 'sent_files.txt' not in file_path:
-                            if os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
-                                large_files.append(file_path)
-
-    current_split_process.stdout.close()
-    current_split_process.stderr.close()
-    current_split_process = None
-    del processes[chat_id]
+    sent_files = load_sent_files(profile_dir)
+    large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
 
     if not large_files:
         msg = await client.send_message(chat_id, f"No large files found for this user. {tag}")
@@ -379,17 +349,17 @@ async def download_and_send_large_media(username, chat_id, tag, pinned_message_i
     TEXT_MESSAGES.append(download_complete_msg.id)
 
     semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)
-    lock = asyncio.Lock()  # Создайте объект Lock для синхронизации
-    remaining_files = [len(large_files)]  # Используйте список для изменяемого объекта
+    lock = asyncio.Lock()
+    remaining_files = [len(large_files)]
 
     for file_path in large_files:
         tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client))
 
     await asyncio.gather(*tasks)
 
-    # inform user in chat that upload is complete
     upload_complete_msg = await client.send_message(chat_id, f"Upload of large files complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
+
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
