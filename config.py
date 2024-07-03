@@ -1,12 +1,27 @@
-# config.py
 import re
+import json
 import logging
 
-# Session Variables (update every time you login or your browser updates)
-USER_ID = "xxx"
-USER_AGENT = "xxx"
-X_BC = "xxx"
-SESS_COOKIE = "xxx"
+# Session Variables loaded from user_config.json
+with open('user_config.json', 'r') as f:
+    user_config = json.load(f)
+
+# Идентификатор пользователя для сессии
+USER_ID = user_config["USER_ID"]
+# User-Agent браузера для имитации запросов
+USER_AGENT = user_config["USER_AGENT"]
+# Параметр X-BC, используемый для аутентификации
+X_BC = user_config["X_BC"]
+# Сессионный куки для аутентификации
+SESS_COOKIE = user_config["SESS_COOKIE"]
+# Токены Telegram-ботов для отправки сообщений
+TELEGRAM_BOT_TOKENS = user_config["TELEGRAM_BOT_TOKENS"]
+# Идентификатор приложения Telegram API
+API_ID = user_config["API_ID"]
+# Хэш приложения Telegram API
+API_HASH = user_config["API_HASH"]
+# Идентификатор пользователя Telegram для ограничения доступа к боту
+TELEGRAM_USER_ID = user_config["TELEGRAM_USER_ID"]
 
 # 0 = do not print file names or api calls
 # 1 = print filenames only when max_age is set
@@ -34,18 +49,8 @@ MESSAGES = True #False
 ARCHIVED = True #False
 PURCHASED = True #False
 
-# Telegram Bot Tokens
-TELEGRAM_BOT_TOKENS = ["xxx", "yyy"]  # добавьте столько токенов, сколько необходимо
-
 # Current active bot index
 current_bot_index = 0  # по умолчанию активен первый бот
-
-# Your Telegram API app
-API_ID = 'xxx'
-API_HASH = 'xxx'
-
-# Your Telegram ID (to restrict access to bot only from your account)
-TELEGRAM_USER_ID = xxx
 
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
@@ -57,7 +62,7 @@ MAX_PARALLEL_UPLOADS = 100
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  #False
 
-# Verify length and format of cookie's values
+# Verify length and format of cookie's values and update user_config.json
 def update_config(key, value):
     if key == "USER_ID":
         if not re.match(r'^\d{1,16}$', value):
@@ -72,11 +77,16 @@ def update_config(key, value):
         if not re.match(r'^[a-zA-Z0-9]{16,32}$', value): 
             raise ValueError("Invalid SESS_COOKIE format")
 
-    # Write new cookies to this file
-    with open(__file__, 'r') as f:
-        config_content = f.read()
+    # Load current config
+    with open('user_config.json', 'r') as f:
+        config = json.load(f)
 
-    new_content = re.sub(f'{key} = ".*?"', f'{key} = "{value}"', config_content)
+    # Update the value
+    config[key] = value
 
-    with open(__file__, 'w') as f:
-        f.write(new_content)
+    # Write updated config back to file
+    with open('user_config.json', 'w') as f:
+        json.dump(config, f, indent=4)
+
+    # Update global variable
+    globals()[key] = value
