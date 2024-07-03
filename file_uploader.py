@@ -27,25 +27,24 @@ def send_fallback_message(chat_id, message):
     if response.status_code != 200:
         logger.error(f"Failed to send fallback message: {response.text}")
 
-async def handle_flood_wait(event, wait_time, client):
+async def handle_flood_wait(chat_id, wait_time, client):
     message = f"FloodWaitError: A wait of {wait_time} seconds is required. Please use /switch to switch to another bot."
     try:
-        await event.respond(message)
+        await client.send_message(chat_id, message)
     except FloodWaitError:
-        send_fallback_message(event.chat_id, message)
+        send_fallback_message(chat_id, message)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Error handling FloodWait: {str(e)}")
+        send_fallback_message(chat_id, f"Error handling FloodWait: {str(e)}")
 
-async def handle_too_many_requests(event, response, client):
+async def handle_too_many_requests(chat_id, response, client):
     retry_after = response.json().get("parameters", {}).get("retry_after", 60)
     message = f"Too Many Requests: retry after {retry_after} seconds. Please use /switch to switch to another bot."
     try:
-        await event.respond(message)
+        await client.send_message(chat_id, message)
     except FloodWaitError:
-        send_fallback_message(event.chat_id, message)
+        send_fallback_message(chat_id, message)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Error handling Too Many Requests: {str(e)}")
-
+        send_fallback_message(chat_id, f"Error handling Too Many Requests: {str(e)}")
 
         
 async def send_message_with_retry(chat_id, message):
