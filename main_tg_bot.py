@@ -117,11 +117,9 @@ async def get_command(event):
 
         await send_existing_media(username, event.chat_id, tag, pinned_message_id, client)
     except FloodWaitError as e:
-        await handle_flood_wait(event, e.seconds, client)
-        send_fallback_message(event.chat_id, f"FloodWaitError: A wait of {e.seconds} seconds is required.")
+        await handle_flood_wait(event.chat_id, e.seconds, client)
     except requests.exceptions.RequestException as e:
-        await handle_too_many_requests(event, e.response, client)
-        send_fallback_message(event.chat_id, f"RequestException: {str(e)}")
+        await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
@@ -164,14 +162,12 @@ async def get_big_command(event):
 
         await send_existing_large_media(username, event.chat_id, tag, pinned_message_id, client)
     except FloodWaitError as e:
-        await handle_flood_wait(event, e.seconds, client)
-        send_fallback_message(event.chat_id, f"FloodWaitError: A wait of {e.seconds} seconds is required.")
+        await handle_flood_wait(event.chat_id, e.seconds, client)
     except requests.exceptions.RequestException as e:
-        await handle_too_many_requests(event, e.response, client)
-        send_fallback_message(event.chat_id, f"RequestException: {str(e)}")
+        await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-        
+
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):
     try:
@@ -221,13 +217,12 @@ async def load_command(event):
         final_file_count = count_files(username)
         await send_message_with_retry(event.chat_id, f"Download complete. {final_file_count} files downloaded for {username}. {tag}")
     except FloodWaitError as e:
-        await handle_flood_wait(event, e.seconds, client)
-        send_fallback_message(event.chat_id, f"FloodWaitError: A wait of {e.seconds} seconds is required.")
+        await handle_flood_wait(event.chat_id, e.seconds, client)
     except requests.exceptions.RequestException as e:
-        await handle_too_many_requests(event, e.response, client)
-        send_fallback_message(event.chat_id, f"RequestException: {str(e)}")
+        await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 
 @client.on(events.NewMessage())
@@ -438,8 +433,6 @@ async def switch_command(event):
             switch_bot_token()
             flood_wait_seconds = 0  # Сброс времени ожидания после переключения
             await event.respond("Switched to the next bot token.")
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
@@ -449,10 +442,9 @@ async def restart_command(event):
         if event.sender_id == TELEGRAM_USER_ID:
             await event.respond("Telegram bot is restarting.")
             os.execv(sys.executable, ['python3'] + sys.argv)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/list'))
 async def list_command(event):
