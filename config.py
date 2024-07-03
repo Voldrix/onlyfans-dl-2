@@ -1,28 +1,8 @@
 import re
-import json
 import logging
+from user_config import *
 
-# Session Variables loaded from user_config.json
-with open('user_config.json', 'r') as f:
-    user_config = json.load(f)
-
-# Идентификатор пользователя для сессии
-USER_ID = user_config["USER_ID"]
-# User-Agent браузера для имитации запросов
-USER_AGENT = user_config["USER_AGENT"]
-# Параметр X-BC, используемый для аутентификации
-X_BC = user_config["X_BC"]
-# Сессионный куки для аутентификации
-SESS_COOKIE = user_config["SESS_COOKIE"]
-# Токены Telegram-ботов для отправки сообщений
-TELEGRAM_BOT_TOKENS = user_config["TELEGRAM_BOT_TOKENS"]
-# Идентификатор приложения Telegram API
-API_ID = user_config["API_ID"]
-# Хэш приложения Telegram API
-API_HASH = user_config["API_HASH"]
-# Идентификатор пользователя Telegram для ограничения доступа к боту
-TELEGRAM_USER_ID = user_config["TELEGRAM_USER_ID"]
-
+ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
 # 0 = do not print file names or api calls
 # 1 = print filenames only when max_age is set
 # 2 = always print filenames
@@ -56,13 +36,13 @@ current_bot_index = 0  # по умолчанию активен первый б�
 CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
 
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram
-MAX_PARALLEL_DOWNLOADS = 400 
+MAX_PARALLEL_DOWNLOADS = 400
 MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  #False
 
-# Verify length and format of cookie's values and update user_config.json
+# Verify length and format of cookie's values and update user_config.py
 def update_config(key, value):
     if key == "USER_ID":
         if not re.match(r'^\d{1,16}$', value):
@@ -74,19 +54,19 @@ def update_config(key, value):
         if not re.match(r'^[a-f0-9]{32,48}$', value):
             raise ValueError("Invalid X_BC format")
     elif key == "SESS_COOKIE":
-        if not re.match(r'^[a-zA-Z0-9]{16,32}$', value): 
+        if not re.match(r'^[a-zA-Z0-9]{16,32}$', value):
             raise ValueError("Invalid SESS_COOKIE format")
 
     # Load current config
-    with open('user_config.json', 'r') as f:
-        config = json.load(f)
+    with open('user_config.py', 'r') as f:
+        config_content = f.read()
 
     # Update the value
-    config[key] = value
+    new_content = re.sub(f'{key} = ".*?"', f'{key} = "{value}"', config_content)
 
     # Write updated config back to file
-    with open('user_config.json', 'w') as f:
-        json.dump(config, f, indent=4)
+    with open('user_config.py', 'w') as f:
+        f.write(new_content)
 
     # Update global variable
     globals()[key] = value
