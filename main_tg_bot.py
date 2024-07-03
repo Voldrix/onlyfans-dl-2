@@ -120,8 +120,6 @@ async def load_command(event):
             await download_media_without_sending(username, event.chat_id, tag, 0)
 
 
-
-# Удалите сообщения о завершении загрузки в функциях /get и /get_big
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -187,8 +185,6 @@ async def get_big_command(event):
         await handle_flood_wait(event.chat_id, wait_time, client)
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
-
-
 
 
 @client.on(events.NewMessage(pattern='/check$'))
