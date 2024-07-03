@@ -1,6 +1,12 @@
 # config.py
+#====================
+# DO NOT TOUCH IT ↓↓↓
+#====================
 import re
 import logging
+#====================
+# DO NOT TOUCH IT ↑↑↑
+#====================
 
 # Session Variables (update every time you login or your browser updates)
 USER_ID = "xxx"
@@ -20,19 +26,19 @@ DL_DIR = ''
 ByPass = ['']
 
 # Separate photos into subdirectories by post/album (Single photo posts are not put into subdirectories)
-ALBUMS = True
+ALBUMS = False #True
 # Use content type subfolders (messages/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
-USE_SUB_FOLDERS = True
+USE_SUB_FOLDERS = False #True
 
 # Content types to download
-VIDEOS = True
-PHOTOS = True
-AUDIO = True
-POSTS = True
-STORIES = True
-MESSAGES = True
-ARCHIVED = True
-PURCHASED = True
+VIDEOS = True #False
+PHOTOS = True #False
+AUDIO = True #False
+POSTS = True #False
+STORIES = True #False
+MESSAGES = True #False
+ARCHIVED = True #False
+PURCHASED = True #False
 
 # Telegram Bot Tokens
 TELEGRAM_BOT_TOKENS = ["xxx", "yyy"]  # добавьте столько токенов, сколько необходимо
@@ -55,8 +61,11 @@ MAX_PARALLEL_DOWNLOADS = 400
 MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
-delete_media_from_server = True  # or False
+delete_media_from_server = True  #False
 
+#====================
+# DO NOT TOUCH IT ↓↓↓
+#====================
 # Verify length and format of cookie's values
 def update_config(key, value):
     if key == "USER_ID":
@@ -80,3 +89,6 @@ def update_config(key, value):
 
     with open(__file__, 'w') as f:
         f.write(new_content)
+#====================
+# DO NOT TOUCH IT ↑↑↑
+#====================
