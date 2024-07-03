@@ -14,10 +14,6 @@ from config import *
 from aiogram.utils import exceptions as aiogram_exceptions
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes  # Add processes here
 
-
-# Остальной код без изменений
-
-
 async def send_message_with_retry(chat_id, message):
     attempts = 0
     while attempts < 5:
