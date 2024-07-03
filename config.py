@@ -33,10 +33,10 @@ PURCHASED = True #False
 current_bot_index = 0  # по умолчанию активен первый бот
 
 # Size of disk space buffer you want to use on your server for temporary media saving
-CACHE_SIZE_LIMIT = 10000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
-
+CACHE_SIZE_LIMIT = 25000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
+TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram
-MAX_PARALLEL_DOWNLOADS = 400
+MAX_PARALLEL_DOWNLOADS = 400 
 MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
@@ -54,7 +54,7 @@ def update_config(key, value):
         if not re.match(r'^[a-f0-9]{32,48}$', value):
             raise ValueError("Invalid X_BC format")
     elif key == "SESS_COOKIE":
-        if not re.match(r'^[a-zA-Z0-9]{16,32}$', value):
+        if not re.match(r'^[a-zA-Z0-9]{16,32}$', value): 
             raise ValueError("Invalid SESS_COOKIE format")
 
     # Load current config
