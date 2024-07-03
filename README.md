@@ -65,8 +65,8 @@ To set up the environment and install necessary dependencies, follow these steps
     API_HASH = 'xxx'
     TELEGRAM_USER_ID = xxx
     ```
-These commands will help you install all the necessary packages and programs for the correct operation of your script. Make sure you are working in the activated virtual environment to avoid conflicts with system packages.
 
+ 9. **If you are advanced user you can also edit `config.py` file to change some script parameters**
 
 ## Features
 * Choose what type of content to download (photos, videos, posts, stories, messages, purchases, archived)
