@@ -88,14 +88,25 @@ async def get_command(event):
             return
 
         target = event.pattern_match.group(1).strip()
-        tag = f"#{target}"
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
 
-        if not os.path.exists(target):
-            msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+        else:
+            username = target
+
+        tag = f"#{username}"
+
+        if not os.path.exists(username):
+            msg = await event.respond(f"Directory for user {username} not found. Please load the files to the server first using /load command.")
             USER_MESSAGES.append(msg.id)
             return
 
-        pinned_message = await event.respond(f"Started sending media for {target} {tag}")
+        pinned_message = await event.respond(f"Started sending media for {username} {tag}")
         TEXT_MESSAGES.append(pinned_message.id)
         pinned_message_id = pinned_message.id
         await client(UpdatePinnedMessageRequest(
@@ -104,7 +115,7 @@ async def get_command(event):
             silent=True
         ))
 
-        await send_existing_media(target, event.chat_id, tag, pinned_message_id, client)
+        await send_existing_media(username, event.chat_id, tag, pinned_message_id, client)
     except FloodWaitError as e:
         await handle_flood_wait(event, e.seconds, client)
         send_fallback_message(event.chat_id, f"FloodWaitError: A wait of {e.seconds} seconds is required.")
@@ -124,14 +135,25 @@ async def get_big_command(event):
             return
 
         target = event.pattern_match.group(1).strip()
-        tag = f"#{target}"
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
 
-        if not os.path.exists(target):
-            msg = await event.respond(f"Directory for user {target} not found. Please load the files to the server first using /load command.")
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+        else:
+            username = target
+
+        tag = f"#{username}"
+
+        if not os.path.exists(username):
+            msg = await event.respond(f"Directory for user {username} not found. Please load the files to the server first using /load command.")
             USER_MESSAGES.append(msg.id)
             return
 
-        pinned_message = await event.respond(f"Started sending large media for {target} {tag}")
+        pinned_message = await event.respond(f"Started sending large media for {username} {tag}")
         TEXT_MESSAGES.append(pinned_message.id)
         pinned_message_id = pinned_message.id
         await client(UpdatePinnedMessageRequest(
@@ -140,7 +162,7 @@ async def get_big_command(event):
             silent=True
         ))
 
-        await send_existing_large_media(target, event.chat_id, tag, pinned_message_id, client)
+        await send_existing_large_media(username, event.chat_id, tag, pinned_message_id, client)
     except FloodWaitError as e:
         await handle_flood_wait(event, e.seconds, client)
         send_fallback_message(event.chat_id, f"FloodWaitError: A wait of {e.seconds} seconds is required.")
@@ -149,7 +171,7 @@ async def get_big_command(event):
         send_fallback_message(event.chat_id, f"RequestException: {str(e)}")
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
+        
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):
     try:
