@@ -1,7 +1,7 @@
 # OnlyFans Profile Downloader / Archiver v3 ([Voldrix](https://github.com/Voldrix/onlyfans-dl-2) fork)
 This tool downloads all photos/videos from OnlyFans profiles, creating a local archive.\
 You must be subscribed to the profile to download their content.\
-Add Telegram Bot to interact with script via messanger's interface 
+Add Telegram Bot to interact with script via messanger's interface (You will need 2 bot (2 BotFather TOKEN) and 1 pair of Telegram App API_ID / API_HASH )
 
 `onlyfans-dl.py` will create a directory named after the profile in the current working directory.\
 A subdirectory structure will be built depending on the options set.\
