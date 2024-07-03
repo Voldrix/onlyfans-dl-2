@@ -136,7 +136,9 @@ def get_user_info(profile):
     info = api_request(f"/users/{profile}", 'user-info')
     if "error" in info:
         print(f"\nFailed to get user: {profile}\n{info['error']['message']}\n")
+        return None  # Возвращаем None, если пользователь не найден
     return info
+
 
 def get_subscriptions():
     subs = api_request("/subscriptions/subscribes", "subscriptions")
@@ -156,8 +158,13 @@ async def download_file(session, url, dest_path):
                 if not chunk:
                     break
                 f.write(chunk)
-    os.rename(temp_path, dest_path)
-    return True
+    if os.path.exists(temp_path):
+        os.rename(temp_path, dest_path)
+    else:
+        print(f"Temp file {temp_path} not found. Unable to rename.")
+    return os.path.exists(dest_path)  # Проверяем, был ли файл успешно переименован
+
+
 
 async def download_media(media, subtype, postdate, album=''):
     filename = f"{postdate}_{media['id']}"
@@ -311,10 +318,12 @@ if __name__ == "__main__":
             continue
         user_info = get_user_info(PROFILE)
 
-        if "id" in user_info:
-            PROFILE_ID = str(user_info["id"])
-        else:
+        if not user_info or "id" not in user_info:
+            print(f"User {PROFILE} not found.")
             continue
+
+        PROFILE_ID = str(user_info["id"])
+
 
         if LATEST:
             latestDate = latest(PROFILE)
