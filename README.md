@@ -54,7 +54,10 @@ To set up the environment and install necessary dependencies, follow these steps
     ```bash
     pip install -r requirements.txt
     ```
-
+8. **Fill in `user_config.py` file with your actual values:
+    ```bash
+    xxx
+    ```
 These commands will help you install all the necessary packages and programs for the correct operation of your script. Make sure you are working in the activated virtual environment to avoid conflicts with system packages.
 
 
