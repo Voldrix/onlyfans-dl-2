@@ -322,7 +322,7 @@ async def download_and_send_media(username, chat_id, tag, pinned_message_id, max
         wait_time = e.seconds
         await handle_flood_wait(event.chat_id, wait_time, client)
 
-    download_complete_msg = await client.send_message(chat_id, f"Download complete. {tag}")
+    download_complete_msg = await client.send_message(chat_id, f"Download was performed. {tag}")
     TEXT_MESSAGES.append(download_complete_msg.id)
 
     remaining_files = [total_files]  # use list for changing object
@@ -428,4 +428,23 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
         final_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
 
     total_files_downloaded = final_file_count - initial_file_count
-    await send_message_with_retry(chat_id, f"Download complete. {total_files_downloaded} files downloaded for {username}. {tag}")
+
+def count_files(profile_dir):
+    total_files = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        total_files += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
+    return total_files
+
+def total_files_estimated(profile_dir, max_age):
+    command = ['python3', ONLYFANS_DL_SCRIPT, profile_dir, str(max_age)]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    total_files = 0
+    while True:
+        output = process.stdout.readline().strip()
+        if not output and process.poll() is not None:
+            break
+        if output:
+            logger.info(output)
+            if "Downloaded" in output and "new" in output:
+                total_files += int(output.split()[1])  # Пример: "Downloaded 3 new files" -> берем число 3
+    return total_files
