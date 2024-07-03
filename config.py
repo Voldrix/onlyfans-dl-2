@@ -1,12 +1,6 @@
 # config.py
-#====================
-# DO NOT TOUCH IT ↓↓↓
-#====================
 import re
 import logging
-#====================
-# DO NOT TOUCH IT ↑↑↑
-#====================
 
 # Session Variables (update every time you login or your browser updates)
 USER_ID = "xxx"
@@ -63,9 +57,6 @@ MAX_PARALLEL_UPLOADS = 100
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  #False
 
-#====================
-# DO NOT TOUCH IT ↓↓↓
-#====================
 # Verify length and format of cookie's values
 def update_config(key, value):
     if key == "USER_ID":
@@ -89,6 +80,3 @@ def update_config(key, value):
 
     with open(__file__, 'w') as f:
         f.write(new_content)
-#====================
-# DO NOT TOUCH IT ↑↑↑
-#====================
