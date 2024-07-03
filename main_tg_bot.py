@@ -11,12 +11,11 @@ from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
-from file_uploader import download_and_send_media, download_and_send_large_media, download_media_without_sending, handle_flood_wait, load_sent_files, send_message_with_retry
+from file_uploader import download_and_send_media, download_and_send_large_media, download_media_without_sending, handle_flood_wait, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size  # Импортируем функцию estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT  # Ensure processes is imported
 
 # Initialize aiogram bot
 dp = Dispatcher(aiogram_bot)
-
 
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
@@ -59,6 +58,7 @@ async def load_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
         await send_message_with_retry(event.chat_id, "Usage: /load <username or subscription number> <max_age (optional)>")
 
+# Обновленная функция /load
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -97,11 +97,21 @@ async def load_command(event):
         await send_message_with_retry(event.chat_id, f"User directory {username} not found. Starting a fresh download. {tag}")
 
     try:
-        await send_message_with_retry(event.chat_id, f"Started downloading media to server for {username} {tag}")
+        estimated_size = estimate_download_size(username)
+        if estimated_size > CACHE_SIZE_LIMIT:
+            await send_message_with_retry(event.chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
+            return
+
+        await send_message_with_retry(event.chat_id, f"Started downloading media to server for {username}. Estimated number of files: {total_files_estimated(username, max_age)} {tag}")
+        
         if max_age is not None:
             await download_media_without_sending(username, event.chat_id, tag, max_age)
         else:
             await download_media_without_sending(username, event.chat_id, tag, 0)
+
+        final_file_count = count_files(username)
+        await send_message_with_retry(event.chat_id, f"Download complete. {final_file_count} files downloaded for {username}. {tag}")
+        
     except aiogram_exceptions.RetryAfter as e:
         await asyncio.sleep(e.timeout)
         if max_age is not None:
@@ -110,6 +120,8 @@ async def load_command(event):
             await download_media_without_sending(username, event.chat_id, tag, 0)
 
 
+
+# Удалите сообщения о завершении загрузки в функциях /get и /get_big
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -143,7 +155,6 @@ async def get_command(event):
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
 
-
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -176,6 +187,8 @@ async def get_big_command(event):
         await handle_flood_wait(event.chat_id, wait_time, client)
     except Exception as e:
         await event.respond(f"Unexpected error occurred: {str(e)}")
+
+
 
 
 @client.on(events.NewMessage(pattern='/check$'))
@@ -487,19 +500,19 @@ async def list_command(event):
 async def setup_aiogram_bot_commands(dp: Dispatcher):
     commands = [
         {"command": "list", "description": "Show list of active subscriptions"},
-        {"command": "get", "description": "Download media and send to this chat"},
-        {"command": "get_big", "description": "Download and send large media files"},
         {"command": "load", "description": "Download media to server without sending"},
         {"command": "check", "description": "Check downloaded profiles and media count"},
-        {"command": "erase", "description": "Erase chat messages with a specific hashtag"},
-        {"command": "del", "description": "Delete profile folder from server"},
+        {"command": "get", "description": "Download media and send to this chat"},
+        {"command": "get_big", "description": "Download and send large media files"},
         {"command": "clear", "description": "Clear non-media messages in chat"},
-        {"command": "restart", "description": "Stop current process and restart bot"},
+        {"command": "del", "description": "Delete profile folder from server"},
         {"command": "switch", "description": "Switch to next bot token"},
+        {"command": "restart", "description": "Stop current process and restart bot"},
         {"command": "user_id", "description": "Update USER_ID"},
         {"command": "user_agent", "description": "Update USER_AGENT"},
         {"command": "x_bc", "description": "Update X_BC"},
-        {"command": "sess_cookie", "description": "Update SESS_COOKIE"}
+        {"command": "sess_cookie", "description": "Update SESS_COOKIE"},
+        {"command": "erase", "description": "Erase chat messages with a specific hashtag"}
     ]
 
     await dp.bot.set_my_commands(commands)
