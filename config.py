@@ -33,8 +33,10 @@ PURCHASED = True #False
 current_bot_index = 0  # по умолчанию активен первый бот
 
 # Size of disk space buffer you want to use on your server for temporary media saving
+
 CACHE_SIZE_LIMIT = 25000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
 TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024
+
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram
 MAX_PARALLEL_DOWNLOADS = 400 
 MAX_PARALLEL_UPLOADS = 100
