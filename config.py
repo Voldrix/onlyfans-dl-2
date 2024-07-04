@@ -39,7 +39,7 @@ CACHE_SIZE_LIMIT = 25000 * 1024 * 1024
 # Maximum size of file that Telegram can handle (do not change it)
 TELEGRAM_FILE_SIZE_LIMIT = 2000 * 1024 * 1024
 
-# Maximum count of parallel downloads from OnlyFans site and uploads to telegram
+# Maximum count of parallel downloads from OnlyFans site and uploads to telegram (do not change it if no need)
 MAX_PARALLEL_DOWNLOADS = 400 
 MAX_PARALLEL_UPLOADS = 100
 
