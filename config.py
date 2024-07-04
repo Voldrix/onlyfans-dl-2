@@ -1,3 +1,6 @@
+#==========================================#
+# ↓↓↓↓↓↓↓↓↓↓↓↓ DO NOT TOUCH IT ↓↓↓↓↓↓↓↓↓↓↓↓#
+#==========================================#
 import re
 import logging
 from user_config import *
@@ -5,19 +8,31 @@ from user_config import *
 # path to script onlyfans-dl.py
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
 
+# Maximum size of file that Telegram can handle (do not change it)
+TELEGRAM_FILE_SIZE_LIMIT = 2000 * 1024 * 1024
+
+# Current active bot index (do not change it)
+current_bot_index = 0
+#==========================================#
+# ↑↑↑↑↑↑↑↑↑↑↑↑ DO NOT TOUCH IT ↑↑↑↑↑↑↑↑↑↑↑↑#
+#==========================================#
+
 # 0 = do not print file names or api calls
 # 1 = print filenames only when max_age is set
 # 2 = always print filenames
 # 3 = print api calls
 # 4 = print skipped files that already exist
 VERBOSITY = 2
+
 # Download Directory. Uses CWD if null
 DL_DIR = ''
+
 # List of accounts to skip
 ByPass = ['']
 
 # Separate photos into subdirectories by post/album (Single photo posts are not put into subdirectories)
 ALBUMS = False #True
+
 # Use content type subfolders (messages/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
 USE_SUB_FOLDERS = False #True
 
@@ -31,13 +46,8 @@ MESSAGES = True #False
 ARCHIVED = True #False
 PURCHASED = True #False
 
-# Current active bot index (do not change it)
-current_bot_index = 0
-
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 25000 * 1024 * 1024
-# Maximum size of file that Telegram can handle (do not change it)
-TELEGRAM_FILE_SIZE_LIMIT = 2000 * 1024 * 1024
 
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram (do not change it if no need)
 MAX_PARALLEL_DOWNLOADS = 400 
@@ -46,6 +56,9 @@ MAX_PARALLEL_UPLOADS = 100
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  #False
 
+#==========================================#
+# ↓↓↓↓↓↓↓↓↓↓↓↓ DO NOT TOUCH IT ↓↓↓↓↓↓↓↓↓↓↓↓#
+#==========================================#
 # Verify length and format of cookie's values and update user_config.py
 def update_config(key, value):
     if key == "USER_ID":
@@ -74,3 +87,6 @@ def update_config(key, value):
 
     # Update global variable
     globals()[key] = value
+#==========================================#
+# ↑↑↑↑↑↑↑↑↑↑↑↑ DO NOT TOUCH IT ↑↑↑↑↑↑↑↑↑↑↑↑#
+#==========================================#
