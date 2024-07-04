@@ -124,6 +124,22 @@ To use with Telegram Bot:
 `source myenv/bin/activate` \
 `python3 main_tg_bot.py` 
 
+## Description of Telegram Bot Commands
+* `/list`: Show the list of active subscriptions.
+* `/load`: Download media files to the server without sending to the chat.
+* `/check`: Check downloaded profiles and media file count.
+* `/get`: Download media files and send them to this chat.
+* `/get_big`: Download and send large media files.
+* `/clear`: Clear the chat of non-media messages.
+* `/del`: Delete the profile folder from the server.
+* `/switch`: Switch to the next bot token.
+* `/restart`: Stop the current process and restart the bot.
+* `/user_id`: Update USER_ID.
+* `/user_agent`: Update USER_AGENT.
+* `/x_bc`: Update X_BC.
+* `/sess_cookie`: Update SESS_COOKIE.
+* `/erase`: Erase chat messages with a specific hashtag.
+
 **Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use /switch to switch to your second BotFather bot.
 
 ## Session Variables
