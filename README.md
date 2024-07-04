@@ -11,7 +11,7 @@ Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
 
 ### Quick Start Instructions
 
-   ```bash
+  ```bash
    chmod 777 *.sh
    ```
     
@@ -27,7 +27,7 @@ Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
    ./RUN.sh
    ```
     
-### Installation Instructions
+### Manual Installation Instructions
 
 To set up the environment and install necessary dependencies, follow these steps:
 
@@ -94,7 +94,7 @@ To set up the environment and install necessary dependencies, follow these steps
 * Specify multiple profiles at once or use "all" keyword to get subscriptions dynamically
 * You Can use Telegram Bot to interract with script and get media files via messages
 
-## Usage
+## Run & Usage
 First make sure to set your session variables in the `config.py` script and configure your options.
 
 To use in command line
