@@ -11,18 +11,21 @@ Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
 
 ### Quick Start Instructions
 
-    ```bash
-    chmod 777 *.sh
-    ```
-    ```bash
-    ./INSTALL.sh
-    ```
-    ```bash
-    ./SETUP.sh
-    ```
-    ```bash
-    ./RUN.sh
-    ```
+   ```bash
+   chmod 777 *.sh
+   ```
+    
+   ```bash
+   ./INSTALL.sh
+   ```
+
+   ```bash
+   ./SETUP.sh
+   ```
+    
+   ```bash
+   ./RUN.sh
+   ```
     
 ### Installation Instructions
 
