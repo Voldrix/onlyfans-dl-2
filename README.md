@@ -110,11 +110,11 @@ To use in command line
 * `<--list>` - print list with usernames of profiles you are subscribed to. 
 * `<profiles>` - the usernames of profiles to download. Use "all" to get all currently subscribed profiles
 * `<max age>` - Optional: Only get posts from the last &lt;integer&gt; days (Messages/Paid not affected)
-  * `max age = 0` - sets max age to latest date from the filenames for each profile individually
+* `max age = 0` - sets max age to latest date from the filenames for each profile individually
 
 To use with Telegram Bot:
 `python3 main_tg_bot.py` \
-**Notes**: Telegram API not allow fast messeage flood, so telethon can't send all files at once. If you see in pinned message "Remaining files to send: XXX (not 0)" - just rerun /get XXX command.
+**Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use /switch to switch to your second BotFather bot.
 
 ## Session Variables
 You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HTTP header, and **user-id**. Here's how to get them
