@@ -114,7 +114,9 @@ To use in command line
 
 To use with Telegram Bot:
 `source myenv/bin/activate` \
+
 `python3 main_tg_bot.py` \
+
 **Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use /switch to switch to your second BotFather bot.
 
 ## Session Variables
