@@ -6,13 +6,15 @@ import asyncio
 import logging
 import requests
 import subprocess
+from PIL import Image
+from moviepy.editor import VideoFileClip
 from aiogram import Bot, Dispatcher
 from aiogram.utils import exceptions as aiogram_exceptions
 from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
-from file_uploader import process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
+from file_uploader import save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
 
 
@@ -80,6 +82,7 @@ async def load_command_usage(event):
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
@@ -173,16 +176,22 @@ async def get_command(event):
 
         # Отправка сообщений о больших файлах
         for file_path in large_files:
-            file_name = os.path.basename(file_path)
-            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            duration = "N/A"
-            if file_path.endswith('mp4'):
-                video = VideoFileClip(file_path)
-                duration = video.duration
-            msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
-            TEXT_MESSAGES.append(msg.id)
-            # Сохраняем отправленный файл
-            save_sent_file(profile_dir, file_name)
+            try:
+                file_name = os.path.basename(file_path)
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                duration = "N/A"
+                if file_path.endswith('mp4'):
+                    try:
+                        video = VideoFileClip(file_path)
+                        duration = video.duration
+                    except Exception:
+                        continue  # Пропускаем поврежденный файл
+                msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
+                TEXT_MESSAGES.append(msg.id)
+                # Сохраняем отправленный файл
+                save_sent_file(profile_dir, file_name)
+            except Exception as e:
+                logger.error(f"Failed to process large file {file_path}: {str(e)}")
 
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
@@ -192,10 +201,7 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
         
-        
-
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
     try:
@@ -261,7 +267,11 @@ async def get_big_command(event):
 
         # Отправка больших файлов по одному
         for file_path in large_files:
-            await process_large_file(profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+            try:
+                await process_large_file(profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+            except Exception as e:
+                logger.error(f"Failed to process large file {file_path}: {str(e)}")
+                continue  # Пропуск поврежденного файла
 
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload of large files complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
@@ -271,6 +281,8 @@ async def get_big_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+       
+
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):
