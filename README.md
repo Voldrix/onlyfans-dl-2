@@ -9,9 +9,16 @@ Any existing media will be skipped, not redownloaded.\
 Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
 `main_tg_bot.py` will start onlyfans-dl from Telegram and send you downloaded media files.
 
+### Prerequisites
+   ```bash
+   sudo apt-get install git
+   ```
+   ```bash
+   git clone https://github.com/chelaxian/onlyfans-dl-3
+   ```
 ### Quick Start Instructions
 
-  ```bash
+   ```bash
    chmod 777 *.sh
    ```
     
