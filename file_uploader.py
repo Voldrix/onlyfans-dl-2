@@ -46,7 +46,7 @@ async def handle_too_many_requests(chat_id, response, client):
     except Exception as e:
         send_fallback_message(chat_id, f"Error handling Too Many Requests: {str(e)}")
 
-        
+
 async def send_message_with_retry(chat_id, message):
     attempts = 0
     while attempts < 5:
