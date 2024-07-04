@@ -174,7 +174,7 @@ async def get_command(event):
 
         await asyncio.gather(*tasks)
 
-        # Отправка сообщений о больших файлах
+        # Отправка сообщений о больших файлах без занесения их в sent_files.txt
         for file_path in large_files:
             try:
                 file_name = os.path.basename(file_path)
@@ -188,8 +188,6 @@ async def get_command(event):
                         continue  # Пропускаем поврежденный файл
                 msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
                 TEXT_MESSAGES.append(msg.id)
-                # Сохраняем отправленный файл
-                save_sent_file(profile_dir, file_name)
             except Exception as e:
                 logger.error(f"Failed to process large file {file_path}: {str(e)}")
 
@@ -201,7 +199,9 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
         
+
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
     try:
@@ -281,6 +281,7 @@ async def get_big_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
        
 
 
