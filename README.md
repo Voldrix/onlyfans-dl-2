@@ -66,7 +66,7 @@ To set up the environment and install necessary dependencies, follow these steps
     TELEGRAM_USER_ID = xxx
     ```
 
- 9. **If you are advanced user you can also edit `config.py` file to change some script parameters**
+ 9. **If you are advanced user you can also edit `system_config.py` file to change some script parameters. Do not touch `config.py` file**
 
 ## Features
 * Choose what type of content to download (photos, videos, posts, stories, messages, purchases, archived)
