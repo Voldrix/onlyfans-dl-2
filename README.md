@@ -109,7 +109,7 @@ To set up the environment and install necessary dependencies, follow these steps
 * You Can use Telegram Bot to interract with script and get media files via messages
 
 ## Run & Usage
-First make sure to set your session variables in the `config.py` script and configure your options.
+First make sure to set your session variables in the `user_config.py` script and configure your options.
 
 To use in command line
 `python3 onlyfans-dl.py < --help / --list / profiles / all > < max age (optional) >`
