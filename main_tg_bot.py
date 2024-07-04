@@ -330,10 +330,13 @@ async def erase_command(event):
 
     message_ids_to_delete = []
 
-    for msg_id in TEXT_MESSAGES:
-        message = await client.get_messages(event.chat_id, ids=msg_id)
-        if message and f"#{username}" in message.message:
-            message_ids_to_delete.append(msg_id)
+    for msg_id in TEXT_MESSAGES + USER_MESSAGES:
+        try:
+            message = await client.get_messages(event.chat_id, ids=msg_id)
+            if message and f"#{username}" in message.message:
+                message_ids_to_delete.append(msg_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch message {msg_id}: {str(e)}")
 
     if message_ids_to_delete:
         try:
@@ -347,6 +350,8 @@ async def erase_command(event):
     else:
         msg = await event.respond(f"No messages with tag #{username} found.")
         USER_MESSAGES.append(msg.id)
+
+
 
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
