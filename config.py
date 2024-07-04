@@ -31,8 +31,8 @@ MESSAGES = True #False
 ARCHIVED = True #False
 PURCHASED = True #False
 
-# Current active bot index
-current_bot_index = 0  # по умолчанию активен первый бот
+# Current active bot index (do not change it)
+current_bot_index = 0
 
 # Size of disk space buffer you want to use on your server for temporary media saving
 CACHE_SIZE_LIMIT = 25000 * 1024 * 1024
