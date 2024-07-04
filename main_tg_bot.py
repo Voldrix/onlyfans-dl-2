@@ -120,19 +120,24 @@ async def get_command(event):
 
         profile_dir = username
         new_files = []
+        large_files = []
 
         for dirpath, _, filenames in os.walk(profile_dir):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
-                    new_files.append(file_path)
+                    if os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                        new_files.append(file_path)
+                    else:
+                        large_files.append(file_path)
 
         sent_files = load_sent_files(profile_dir)
         new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
+        large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
         new_files.sort(key=os.path.getsize)
 
         total_files = len(new_files)
-        if not new_files:
+        if not new_files and not large_files:
             msg = await client.send_message(event.chat_id, f"No new photos or videos found for this user. {tag}")
             TEXT_MESSAGES.append(msg.id)
             return
@@ -166,6 +171,19 @@ async def get_command(event):
 
         await asyncio.gather(*tasks)
 
+        # Отправка сообщений о больших файлах
+        for file_path in large_files:
+            file_name = os.path.basename(file_path)
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            duration = "N/A"
+            if file_path.endswith('mp4'):
+                video = VideoFileClip(file_path)
+                duration = video.duration
+            msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
+            TEXT_MESSAGES.append(msg.id)
+            # Сохраняем отправленный файл
+            save_sent_file(profile_dir, file_name)
+
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
     except FloodWaitError as e:
@@ -174,6 +192,7 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
         
         
 
