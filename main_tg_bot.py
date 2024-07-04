@@ -6,14 +6,17 @@ import asyncio
 import logging
 import requests
 import subprocess
+from PIL import Image
+from moviepy.editor import VideoFileClip
 from aiogram import Bot, Dispatcher
 from aiogram.utils import exceptions as aiogram_exceptions
 from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
-from file_uploader import send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size  # Импортируем функцию estimate_download_size
-from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT  # Ensure processes is imported
+from file_uploader import save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
+from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
+
 
 # Initialize aiogram bot
 dp = Dispatcher(aiogram_bot)
@@ -30,6 +33,7 @@ def send_fallback_message(chat_id, message):
     response = requests.post(url, data=data)
     if response.status_code != 200:
         logger.error(f"Failed to send fallback message: {response.text}")
+
 
 
 def run_script(args):
@@ -79,6 +83,7 @@ async def load_command_usage(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
+
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
     try:
@@ -116,13 +121,86 @@ async def get_command(event):
             silent=True
         ))
 
-        await send_existing_media(username, event.chat_id, tag, pinned_message_id, client)
+        profile_dir = username
+        new_files = []
+        large_files = []
+
+        for dirpath, _, filenames in os.walk(profile_dir):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
+                    if os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                        new_files.append(file_path)
+                    else:
+                        large_files.append(file_path)
+
+        sent_files = load_sent_files(profile_dir)
+        new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
+        large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
+        new_files.sort(key=os.path.getsize)
+
+        total_files = len(new_files)
+        if not new_files and not large_files:
+            msg = await client.send_message(event.chat_id, f"No new photos or videos found for this user. {tag}")
+            TEXT_MESSAGES.append(msg.id)
+            return
+
+        await client(EditMessageRequest(
+            peer=event.chat_id,
+            id=pinned_message_id,
+            message=f"Total new files to send: {total_files}. {tag}"
+        ))
+        LAST_MESSAGE_CONTENT[pinned_message_id] = f"Total new files to send: {total_files}. {tag}"
+
+        download_complete_msg = await client.send_message(event.chat_id, f"Download was performed. {tag}")
+        TEXT_MESSAGES.append(download_complete_msg.id)
+
+        remaining_files = [total_files]
+        lock = asyncio.Lock()
+        semaphore = asyncio.Semaphore(MAX_PARALLEL_UPLOADS)
+
+        tasks = []
+        current_batch_size = 0
+
+        for file_path in new_files:
+            file_size = os.path.getsize(file_path)
+            if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                current_batch_size += file_size
+                tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+            else:
+                await asyncio.gather(*tasks)
+                tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
+                current_batch_size = file_size
+
+        await asyncio.gather(*tasks)
+
+        # Отправка сообщений о больших файлах без занесения их в sent_files.txt
+        for file_path in large_files:
+            try:
+                file_name = os.path.basename(file_path)
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                duration = "N/A"
+                if file_path.endswith('mp4'):
+                    try:
+                        video = VideoFileClip(file_path)
+                        duration = video.duration
+                    except Exception:
+                        continue  # Пропускаем поврежденный файл
+                msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
+                TEXT_MESSAGES.append(msg.id)
+            except Exception as e:
+                logger.error(f"Failed to process large file {file_path}: {str(e)}")
+
+        upload_complete_msg = await client.send_message(event.chat_id, f"Upload complete. {tag}")
+        TEXT_MESSAGES.append(upload_complete_msg.id)
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except requests.exceptions.RequestException as e:
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+        
 
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
@@ -161,13 +239,51 @@ async def get_big_command(event):
             silent=True
         ))
 
-        await send_existing_large_media(username, event.chat_id, tag, pinned_message_id, client)
+        profile_dir = username
+        large_files = []
+
+        for dirpath, _, filenames in os.walk(profile_dir):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                if not filename.endswith('.part') and os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT and 'sent_files.txt' not in file_path:
+                    large_files.append(file_path)
+
+        sent_files = load_sent_files(profile_dir)
+        large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
+
+        # Сортировка больших файлов по возрастанию размера
+        large_files.sort(key=os.path.getsize)
+
+        if not large_files:
+            msg = await client.send_message(event.chat_id, f"No large files found for this user. {tag}")
+            TEXT_MESSAGES.append(msg.id)
+            return
+
+        download_complete_msg = await client.send_message(event.chat_id, f"Download complete. {tag}")
+        TEXT_MESSAGES.append(download_complete_msg.id)
+
+        lock = asyncio.Lock()
+        remaining_files = [len(large_files)]
+
+        # Отправка больших файлов по одному
+        for file_path in large_files:
+            try:
+                await process_large_file(profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+            except Exception as e:
+                logger.error(f"Failed to process large file {file_path}: {str(e)}")
+                continue  # Пропуск поврежденного файла
+
+        upload_complete_msg = await client.send_message(event.chat_id, f"Upload of large files complete. {tag}")
+        TEXT_MESSAGES.append(upload_complete_msg.id)
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except requests.exceptions.RequestException as e:
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+       
+
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):

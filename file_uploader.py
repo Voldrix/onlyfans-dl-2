@@ -211,16 +211,32 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
 
     current_split_process = None  # Reset the process variable
 
+
 async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client):
     try:
+        # Добавляем вызов save_sent_file после успешной отправки файла
         await split_and_send_large_file(chat_id, file_path, tag, client)
         if delete_media_from_server:
             with open(file_path, 'w') as f:
                 pass  # Open in write mode to make file empty
         else:
             os.remove(file_path)
+        
+        # Сохраняем отправленный файл
+        save_sent_file(profile_dir, os.path.basename(file_path))
+
+        async with lock:
+            remaining_files[0] -= 1
+            message_content = f"Remaining files to send: {remaining_files[0]}. {tag}"
+            await client(EditMessageRequest(
+                peer=chat_id,
+                id=pinned_message_id,
+                message=message_content
+            ))
+            LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
+
 
 async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
@@ -262,6 +278,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
+
 
 async def upload_with_semaphore(semaphore, process_file, *args):
     async with semaphore:
