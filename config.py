@@ -2,7 +2,9 @@ import re
 import logging
 from user_config import *
 
+# path to script onlyfans-dl.py
 ONLYFANS_DL_SCRIPT = 'onlyfans-dl.py'
+
 # 0 = do not print file names or api calls
 # 1 = print filenames only when max_age is set
 # 2 = always print filenames
@@ -33,9 +35,9 @@ PURCHASED = True #False
 current_bot_index = 0  # по умолчанию активен первый бот
 
 # Size of disk space buffer you want to use on your server for temporary media saving
-
-CACHE_SIZE_LIMIT = 25000 * 1024 * 1024  # limit to your free disk space on server you don't want to exceed
-TELEGRAM_FILE_SIZE_LIMIT = 2 * 1024 * 1024
+CACHE_SIZE_LIMIT = 25000 * 1024 * 1024
+# Maximum size of file that Telegram can handle (do not change it)
+TELEGRAM_FILE_SIZE_LIMIT = 2000 * 1024 * 1024
 
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram
 MAX_PARALLEL_DOWNLOADS = 400 
