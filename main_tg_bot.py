@@ -72,7 +72,8 @@ async def get_big_command_usage(event):
 async def load_command_usage(event):
     try:
         if event.sender_id == TELEGRAM_USER_ID:
-            await send_message_with_retry(event.chat_id, "Usage: /load <username or subscription number> <max_age (optional)>")
+            msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
+            TEXT_MESSAGES.append(msg.id)
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
