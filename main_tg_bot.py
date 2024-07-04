@@ -244,7 +244,7 @@ async def track_user_messages(event):
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-        
+
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -346,7 +346,7 @@ async def erase_command(event):
     else:
         msg = await event.respond(f"No messages with tag #{username} found.")
         USER_MESSAGES.append(msg.id)
-        
+
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
