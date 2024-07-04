@@ -21,6 +21,7 @@ Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
    ```
    ```bash
    git clone https://github.com/chelaxian/onlyfans-dl-3
+   cd onlyfans-dl-3
    ```
 ### Quick Start Instructions for Ubuntu/Debian-like OS
 
