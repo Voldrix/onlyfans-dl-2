@@ -7,7 +7,7 @@ sudo apt-get update
 sudo apt-get install -y ffmpeg
 
 # Install python3 and python3-venv
-sudo apt-get install -y python3 python3-venv
+sudo apt-get install -y python3 python3-pip python3-venv
 
 # Create a virtual environment if it doesn't exist
 if [ ! -d "myenv" ]; then
