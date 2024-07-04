@@ -159,6 +159,13 @@ You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HT
 
 There are variables for each of these values at the top of the script. Make sure to update them every time you login or your browser updates.
 
+## Obtaining API ID and Hash (and BotFather token)
+* Go to my.telegram.org.
+* Log in with your phone number and login code.
+* Go to the API development tools section.
+* Create a new application and obtain the api_id and api_hash.
+* For BotFather bot and token use telegram bot - [@BotFather](https://t.me/BotFather)
+
 #### ToDo
 A post with a single photo and video shouldn't be considered an album.\
 Allow messages to be limited by age through a separate mechanism/function.
