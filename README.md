@@ -140,7 +140,7 @@ To use with Telegram Bot:
 * `/sess_cookie`: Update SESS_COOKIE.
 * `/erase`: Erase chat messages with a specific hashtag.
 
-**Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use /switch to switch to your second BotFather bot.
+**Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use `/switch` to switch to your second BotFather bot.
 
 ## Session Variables
 You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HTTP header, and **user-id**. Here's how to get them
