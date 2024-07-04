@@ -26,7 +26,7 @@ Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg).\
 ### Quick Start Instructions for Ubuntu/Debian-like OS
 
    ```bash
-   chmod 777 *.sh
+   sudo chmod 777 *.sh
    ```
     
    ```bash
