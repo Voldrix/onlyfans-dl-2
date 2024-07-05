@@ -170,4 +170,7 @@ There are variables for each of these values at the top of the script. Make sure
 A post with a single photo and video shouldn't be considered an album.\
 Allow messages to be limited by age through a separate mechanism/function.
 
-
+Telegram bot:
+* group photos to album of 10 photo
+* sort, group and post by same date
+* add more config options
