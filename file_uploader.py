@@ -37,16 +37,20 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
 
             # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
-            media_group.append(uploaded_video)
+            media_group.append(InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
+            ))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
         if media_group:
+            full_caption = f"{tag} #video\n" + "\n".join(captions)  # Добавляем тег #video и дату
             await client.send_file(
                 chat_id,
                 file=media_group,
-                caption=captions,
-                attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
+                caption=full_caption
             )
 
             for file_path in video_batch:
