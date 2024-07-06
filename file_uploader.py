@@ -138,7 +138,6 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
-
 async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
@@ -151,7 +150,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
 
             # Загрузить фото на сервер Telegram и получить объект InputPhoto
             uploaded_photo = await client.upload_file(file_path)
-            media_group.append(InputMediaPhoto(id=uploaded_photo))
+            media_group.append(InputMediaPhoto(uploaded_photo))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
@@ -174,6 +173,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
+
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
