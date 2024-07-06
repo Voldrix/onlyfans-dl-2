@@ -147,13 +147,14 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            media_group.append(InputMediaPhoto(file_path))
+            media_group.append(InputMediaPhoto(file=open(file_path, 'rb')))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
         caption = f"{tag}\n" + "\n".join(captions)
 
-        await client.send_file(chat_id, media_group, caption=caption, supports_streaming=False)
+        # Отправляем фотографии как альбом
+        await client.send_file(chat_id, media_group, caption=caption)
 
         for file_path in photo_batch:
             save_sent_file(profile_dir, os.path.basename(file_path))
