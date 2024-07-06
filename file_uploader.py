@@ -13,7 +13,7 @@ from moviepy.editor import VideoFileClip
 from telethon.tl.functions.messages import EditMessageRequest
 from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
 
-from telethon.tl.types import InputPhoto
+from telethon.tl.types import InputPhoto, InputMediaUploadedPhoto
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
