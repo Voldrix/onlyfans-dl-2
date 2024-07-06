@@ -137,6 +137,8 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
+from telethon.tl.types import InputMediaPhoto
+
 async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
@@ -147,13 +149,12 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            media_group.append(InputMediaPhoto(file=open(file_path, 'rb')))
+            media_group.append(InputMediaPhoto(file=file_path))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
         caption = f"{tag}\n" + "\n".join(captions)
 
-        # Отправляем фотографии как альбом
         await client.send_file(chat_id, media_group, caption=caption)
 
         for file_path in photo_batch:
