@@ -174,9 +174,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-#new2
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-
+#new3
 from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
 
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
@@ -193,6 +191,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             uploaded_video = await client.upload_file(file_path)
             media_group.append(InputMediaUploadedDocument(
                 file=uploaded_video,
+                mime_type='video/mp4',  # Добавляем недостающий аргумент
                 attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
             ))
             post_date = os.path.basename(file_path).split('_')[0]
@@ -216,8 +215,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
-
-
+        
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
