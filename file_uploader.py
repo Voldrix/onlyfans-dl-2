@@ -191,14 +191,14 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             uploaded_video = await client.upload_file(file_path)
             media_group.append(InputMediaUploadedDocument(
                 file=uploaded_video,
-                mime_type='video/mp4',  # Добавляем недостающий аргумент
+                mime_type='video/mp4',
                 attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
             ))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
         if media_group:
-            caption = f"{tag} #video\n" + "\n".join(captions)  # Добавляем тег #video
+            caption = f"{tag} #video\n" + "\n.join(captions)"  # Добавляем тег #video
             await client.send_file(chat_id, media_group, caption=caption)
 
             for file_path in video_batch:
