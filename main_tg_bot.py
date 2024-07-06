@@ -161,26 +161,26 @@ async def get_command(event):
 
         tasks = []
         current_batch_size = 0
-        photo_batch = []
 
+        photo_batch = []
         for file_path in new_files:
             file_size = os.path.getsize(file_path)
-            if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
-                current_batch_size += file_size
-                if file_path.lower().endswith(('jpg', 'jpeg', 'png')):
-                    photo_batch.append(file_path)
-                    if len(photo_batch) == 10:
-                        tasks.append(upload_with_semaphore(semaphore, process_photo_batch, profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
-                        photo_batch = []
-                else:
-                    tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+            if file_path.endswith(('jpg', 'jpeg', 'png')):
+                photo_batch.append(file_path)
+                if len(photo_batch) == 10:
+                    await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    photo_batch = []
             else:
-                await asyncio.gather(*tasks)
-                tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
-                current_batch_size = file_size
+                if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                    current_batch_size += file_size
+                    tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+                else:
+                    await asyncio.gather(*tasks)
+                    tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
+                    current_batch_size = file_size
 
         if photo_batch:
-            tasks.append(upload_with_semaphore(semaphore, process_photo_batch, profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+            await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
 
         await asyncio.gather(*tasks)
 
@@ -209,7 +209,7 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
+        
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
     try:
