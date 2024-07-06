@@ -218,7 +218,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
         
-    async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
+async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
     file_size = os.path.getsize(file_path)
