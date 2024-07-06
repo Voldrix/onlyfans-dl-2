@@ -5,6 +5,7 @@ import logging
 import sys
 from aiogram import Bot, Dispatcher
 from telethon import TelegramClient
+from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo
 from config import TELEGRAM_BOT_TOKENS, API_ID, API_HASH, current_bot_index
 
 # Initialize aiogram bot
