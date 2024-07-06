@@ -146,13 +146,13 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            media_group.append(types.InputMediaPhoto(media=open(file_path, 'rb')))
+            media_group.append(types.InputMediaPhoto(media=file_path))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
         caption = f"{tag}\n" + "\n".join(captions)
 
-        await client.send_media_group(chat_id, media_group, caption=caption)
+        await client.send_file(chat_id, media_group, caption=caption, supports_streaming=False)
 
         for file_path in photo_batch:
             save_sent_file(profile_dir, os.path.basename(file_path))
@@ -168,7 +168,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
-
+        
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
