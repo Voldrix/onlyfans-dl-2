@@ -9,7 +9,8 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
-from telethon.tl.types import InputMediaPhoto
+from telethon.tl.types import InputMediaPhoto, InputPhoto
+from telethon.utils import get_input_photo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
@@ -137,6 +138,7 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
+
 async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
@@ -147,7 +149,11 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            media_group.append(types.InputMediaUploadPhoto(file=file_path))
+            # Загрузить фото на сервер Telegram и получить объект InputPhoto
+            uploaded_photo = await client.upload_file(file_path)
+            input_photo = get_input_photo(uploaded_photo)
+
+            media_group.append(InputMediaPhoto(id=input_photo))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
