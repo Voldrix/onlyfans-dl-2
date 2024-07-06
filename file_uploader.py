@@ -10,8 +10,7 @@ import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
 from telethon.tl.types import InputMediaUploadedPhoto, InputPhoto
-#from telethon.tl.types import InputMediaPhotoExternal, InputMediaPhoto
-#from telethon.utils import get_input_photo
+from telethon.tl.types import InputMediaUploadedDocument
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
@@ -184,9 +183,9 @@ async def send_video_batch(profile_dir, video_batch, chat_id, tag, pinned_messag
                 os.remove(file_path)
                 continue
 
-            # Загружаем видео на сервер Telegram и получаем объект InputFile
+            # Загружаем видео на сервер Telegram и получаем объект InputMediaUploadedDocument
             uploaded_video = await client.upload_file(file_path)
-            media_group.append(types.InputMediaVideo(media=uploaded_video))
+            media_group.append(InputMediaUploadedDocument(file=uploaded_video))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
