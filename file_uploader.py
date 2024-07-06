@@ -174,7 +174,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-#new4
+#new3
 from telethon.tl.types import DocumentAttributeVideo, InputMediaDocument
 
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
