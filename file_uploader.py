@@ -23,8 +23,6 @@ from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, 
 
 last_flood_wait_message_time = None  # Инициализация глобальной переменной
 
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
