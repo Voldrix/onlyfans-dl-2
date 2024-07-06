@@ -10,8 +10,8 @@ import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
 
-from telethon.tl.functions.messages import SendMultiMediaRequest, EditMessageRequest
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument, InputSingleMedia
+from telethon.tl.functions.messages import EditMessageRequest
+from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
 
 from telethon.tl.types import InputPhoto
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
