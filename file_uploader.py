@@ -174,26 +174,41 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-async def send_video_batch(chat_id, video_batch, tag, client):
-    if not video_batch:
-        return
+async def send_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
+    try:
+        media_group = []
+        captions = []
 
-    caption = f"{tag} #video"
-    attempts = 0
-    while attempts < 5:
-        try:
-            await client.send_file(chat_id, video_batch, caption=caption)
-            break
-        except FloodWaitError as e:
-            await handle_flood_wait(chat_id, e.seconds, client)
-            attempts += 1
-        except Exception as e:
-            logger.error(f"Failed to send video batch: {str(e)}")
-            attempts += 1
-            await asyncio.sleep(5)  # Ждем перед повторной попыткой
-    else:
-        await aiogram_bot.send_message(chat_id, f"Failed to send video batch after multiple attempts. {tag}")
+        for i, file_path in enumerate(video_batch):
+            if not is_valid_file(file_path):
+                os.remove(file_path)
+                continue
 
+            # Загружаем видео на сервер Telegram и получаем объект InputFile
+            uploaded_video = await client.upload_file(file_path)
+            media_group.append(types.InputMediaVideo(media=uploaded_video))
+            post_date = os.path.basename(file_path).split('_')[0]
+            captions.append(f"{i + 1}. {post_date}")
+
+        if media_group:
+            caption = f"{tag} #video\n" + "\n".join(captions)  # Добавляем тег #video
+            await client.send_file(chat_id, media_group, caption=caption)
+
+            for file_path in video_batch:
+                save_sent_file(profile_dir, os.path.basename(file_path))
+
+            async with lock:
+                remaining_files_ref[0] -= len(video_batch)
+                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+                await client(EditMessageRequest(
+                    peer=chat_id,
+                    id=pinned_message_id,
+                    message=message_content
+                ))
+                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+    except Exception as e:
+        logger.error(f"Failed to process video batch: {str(e)}")
+        
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
