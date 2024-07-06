@@ -23,6 +23,46 @@ from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, 
 
 last_flood_wait_message_time = None  # Инициализация глобальной переменной
 
+from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo, InputMediaDocument
+
+async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
+    try:
+        media_group = []
+        captions = []
+
+        for i, file_path in enumerate(video_batch):
+            if not is_valid_file(file_path):
+                os.remove(file_path)
+                continue
+
+            # Загружаем видео на сервер Telegram и получаем объект InputFile
+            uploaded_video = await client.upload_file(file_path)
+            media_group.append(InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
+            ))
+            post_date = os.path.basename(file_path).split('_')[0]
+            captions.append(f"{i + 1}. {post_date}")
+
+        if media_group:
+            await client.send_file(chat_id, media_group)
+
+            for file_path in video_batch:
+                save_sent_file(profile_dir, os.path.basename(file_path))
+
+            async with lock:
+                remaining_files_ref[0] -= len(video_batch)
+                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+                await client(EditMessageRequest(
+                    peer=chat_id,
+                    id=pinned_message_id,
+                    message=message_content
+                ))
+                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+    except Exception as e:
+        logger.error(f"Failed to process video batch: {str(e)}")
+
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
     data = {
@@ -174,55 +214,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 ))
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
-        logger.error(f"Failed to process photo batch: {str(e)}")
-        
-#new13
-from telethon.tl.functions.messages import SendMultiMedia
-from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo, InputSingleMedia, InputPeerSelf
-
-async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
-    try:
-        media_group = []
-        captions = []
-
-        for i, file_path in enumerate(video_batch):
-            if not is_valid_file(file_path):
-                os.remove(file_path)
-                continue
-
-            # Загружаем видео на сервер Telegram и получаем объект InputFile
-            uploaded_video = await client.upload_file(file_path)
-            media = InputMediaUploadedDocument(
-                file=uploaded_video,
-                mime_type='video/mp4',
-                attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
-            )
-            media_group.append(InputSingleMedia(
-                media=media,
-                message=f"{tag} #{i+1}"
-            ))
-
-        if media_group:
-            await client(SendMultiMedia(
-                peer=chat_id,
-                multi_media=media_group
-            ))
-
-            for file_path in video_batch:
-                save_sent_file(profile_dir, os.path.basename(file_path))
-
-            async with lock:
-                remaining_files_ref[0] -= len(video_batch)
-                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
-                await client(EditMessageRequest(
-                    peer=chat_id,
-                    id=pinned_message_id,
-                    message=message_content
-                ))
-                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
-    except Exception as e:
-        logger.error(f"Failed to process video batch: {str(e)}")
-        
+        logger.error(f"Failed to process photo batch: {str(e)}")     
         
         
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
