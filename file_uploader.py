@@ -10,8 +10,8 @@ import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
 from telethon.tl.types import InputMediaUploadedPhoto, InputPhoto
-from telethon.tl.types import InputMediaPhotoExternal, InputMediaPhoto
-from telethon.utils import get_input_photo
+#from telethon.tl.types import InputMediaPhotoExternal, InputMediaPhoto
+#from telethon.utils import get_input_photo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
@@ -156,7 +156,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
             captions.append(f"{i + 1}. {post_date}")
 
         if media_group:
-            caption = f"{tag}\n" + "\n".join(captions)
+            caption = f"{tag} #photo\n" + "\n".join(captions)  # Добавляем тег #photo
             await client.send_file(chat_id, media_group, caption=caption)
 
             for file_path in photo_batch:
