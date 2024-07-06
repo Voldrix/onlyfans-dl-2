@@ -19,8 +19,12 @@ from aiogram import types
 from aiogram.utils import exceptions as aiogram_exceptions
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes  # Add processes here
 
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo, InputMediaDocument
+from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo, InputFile
+from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
+from telethon.tl.functions.messages import EditMessageRequest
+from telethon.tl.types import InputSingleMedia
+
+
 last_flood_wait_message_time = None  # Инициализация глобальной переменной
 
 def send_fallback_message(chat_id, message):
@@ -177,31 +181,27 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
         logger.error(f"Failed to process photo batch: {str(e)}")
         
 #new7
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
-        captions = []
 
         for i, file_path in enumerate(video_batch):
             if not is_valid_file(file_path):
                 os.remove(file_path)
                 continue
 
-            # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
-            media_group.append(InputMediaUploadedDocument(
+
+            media = InputMediaUploadedDocument(
                 file=uploaded_video,
                 mime_type='video/mp4',
                 attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
-            ))
-            post_date = os.path.basename(file_path).split('_')[0]
-            captions.append(f"{i + 1}. {post_date}")
+            )
+
+            media_group.append(InputSingleMedia(media=media))
 
         if media_group:
-            caption = f"{tag} #video\n" + "\n.join(captions)"  # Добавляем тег #video
-            await client.send_file(chat_id, media_group, caption=caption)
+            await client.send_media_group(chat_id, media_group, caption=f"{tag} #video")
 
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
