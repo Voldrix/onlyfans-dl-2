@@ -9,8 +9,10 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
-from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo
-from telethon.tl.types import InputMediaUploadedPhoto, InputMediaDocument, DocumentAttributeVideo
+
+from telethon.tl.functions.messages import SendMultiMediaRequest, EditMessageRequest
+from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument, InputSingleMedia
+
 from telethon.tl.types import InputPhoto
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
@@ -18,12 +20,6 @@ from config import *
 from aiogram import types
 from aiogram.utils import exceptions as aiogram_exceptions
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes  # Add processes here
-
-from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo, InputFile
-from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
-from telethon.tl.functions.messages import EditMessageRequest
-from telethon.tl.types import InputSingleMedia
-
 
 last_flood_wait_message_time = None  # Инициализация глобальной переменной
 
@@ -181,7 +177,8 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
         logger.error(f"Failed to process photo batch: {str(e)}")
         
 #new13
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument, InputSingleMedia
+from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
+from telethon.tl.functions.messages import SendMultiMediaRequest, InputSingleMedia
 
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
@@ -195,24 +192,21 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
 
             # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
-            media = InputSingleMedia(
-                media=InputMediaUploadedDocument(
-                    file=uploaded_video,
-                    mime_type='video/mp4',
-                    attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
-                ),
-                message=f"{tag} #{i+1}"
+            media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
             )
-
-            media_group.append(media)
+            media_group.append(InputSingleMedia(
+                media=media,
+                message=f"{tag} #{i+1}"
+            ))
 
         if media_group:
-            await client.send_file(
-                chat_id,
-                file=media_group,
-                caption=tag,
-                supports_streaming=True
-            )
+            await client(SendMultiMediaRequest(
+                peer=chat_id,
+                multi_media=media_group
+            ))
 
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
@@ -228,7 +222,6 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
-        
         
         
         
