@@ -14,7 +14,8 @@ from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
-from file_uploader import send_video_batch, process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
+from file_uploader import send_video_batch
+from file_uploader import process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
 
 
@@ -165,6 +166,7 @@ async def get_command(event):
         photo_batch = []
         video_batch = []
         video_batch_size = 0
+
         for file_path in new_files:
             file_size = os.path.getsize(file_path)
             if file_path.endswith(('jpg', 'jpeg', 'png')):
@@ -173,24 +175,12 @@ async def get_command(event):
                     await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
                     photo_batch = []
             elif file_path.endswith('mp4'):
-                if video_batch_size + file_size <= 100 * 1024 * 1024:
-                    video_batch.append(file_path)
-                    video_batch_size += file_size
-                    if len(video_batch) == 10:
-                        await send_video_batch(event.chat_id, video_batch, tag, client)
-                        for video in video_batch:
-                            save_sent_file(profile_dir, os.path.basename(video))
-                        video_batch = []
-                        video_batch_size = 0
-                else:
-                    if video_batch:
-                        await send_video_batch(event.chat_id, video_batch, tag, client)
-                        for video in video_batch:
-                            save_sent_file(profile_dir, os.path.basename(video))
-                        video_batch = []
-                        video_batch_size = 0
-                    video_batch.append(file_path)
-                    video_batch_size = file_size
+                video_batch.append(file_path)
+                video_batch_size += file_size
+                if len(video_batch) == 10 or video_batch_size > 100 * 1024 * 1024:
+                    await send_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    video_batch = []
+                    video_batch_size = 0
             else:
                 if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
                     current_batch_size += file_size
@@ -204,9 +194,7 @@ async def get_command(event):
             await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
 
         if video_batch:
-            await send_video_batch(event.chat_id, video_batch, tag, client)
-            for video in video_batch:
-                save_sent_file(profile_dir, os.path.basename(video))
+            await send_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
 
         await asyncio.gather(*tasks)
 
