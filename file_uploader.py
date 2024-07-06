@@ -177,8 +177,8 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
         logger.error(f"Failed to process photo batch: {str(e)}")
         
 #new13
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-from telethon.tl.functions.messages import SendMultiMediaRequest, InputSingleMedia
+from telethon.tl.functions.messages import SendMultiMedia
+from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo, InputSingleMedia, InputPeerSelf
 
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
@@ -203,7 +203,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             ))
 
         if media_group:
-            await client(SendMultiMediaRequest(
+            await client(SendMultiMedia(
                 peer=chat_id,
                 multi_media=media_group
             ))
