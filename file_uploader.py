@@ -174,8 +174,8 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-#new3
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
+#new4
+from telethon.tl.types import DocumentAttributeVideo, InputMediaDocument
 
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
@@ -189,8 +189,10 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
 
             # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
-            media_group.append(InputMediaUploadedDocument(
-                file=uploaded_video,
+            media_group.append(InputMediaDocument(
+                id=uploaded_video.id,
+                access_hash=uploaded_video.access_hash,
+                file_reference=uploaded_video.file_reference,
                 mime_type='video/mp4',
                 attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
             ))
@@ -198,7 +200,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             captions.append(f"{i + 1}. {post_date}")
 
         if media_group:
-            caption = f"{tag} #video\n" + "\n.join(captions)"  # Добавляем тег #video
+            caption = f"{tag} #video\n" + "\n".join(captions)  # Добавляем тег #video
             await client.send_file(chat_id, media_group, caption=caption)
 
             for file_path in video_batch:
@@ -216,7 +218,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
         
-async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
+    async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
     file_size = os.path.getsize(file_path)
