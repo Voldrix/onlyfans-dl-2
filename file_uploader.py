@@ -180,28 +180,36 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-#new7
+#new8
+from telethon.tl.types import DocumentAttributeVideo, InputMediaDocument, InputSingleMedia
+
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
+        captions = []
 
         for i, file_path in enumerate(video_batch):
             if not is_valid_file(file_path):
                 os.remove(file_path)
                 continue
 
+            # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
-
-            media = InputMediaUploadedDocument(
-                file=uploaded_video,
+            media = InputMediaDocument(
+                id=uploaded_video.id,
+                access_hash=uploaded_video.access_hash,
+                file_reference=uploaded_video.file_reference,
                 mime_type='video/mp4',
                 attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
             )
 
-            media_group.append(InputSingleMedia(media=media))
+            media_group.append(InputSingleMedia(
+                media=media,
+                message=f"{tag} #video {os.path.basename(file_path).split('_')[0]}"
+            ))
 
         if media_group:
-            await client.send_media_group(chat_id, media_group, caption=f"{tag} #video")
+            await client.send_file(chat_id, media_group)
 
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
@@ -217,6 +225,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
+        
         
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
