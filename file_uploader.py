@@ -9,6 +9,7 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
+from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo
 from telethon.tl.types import InputMediaUploadedPhoto, InputMediaDocument, DocumentAttributeVideo
 from telethon.tl.types import InputPhoto
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
