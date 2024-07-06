@@ -137,8 +137,6 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
-from telethon.tl.types import InputMediaPhoto
-
 async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
@@ -149,26 +147,26 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            media_group.append(file_path)
+            media_group.append(types.InputMediaUploadPhoto(file=file_path))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
-        caption = f"{tag}\n" + "\n".join(captions)
+        if media_group:
+            caption = f"{tag}\n" + "\n".join(captions)
+            await client.send_file(chat_id, media_group, caption=caption)
 
-        await client.send_file(chat_id, media_group, caption=caption)
+            for file_path in photo_batch:
+                save_sent_file(profile_dir, os.path.basename(file_path))
 
-        for file_path in photo_batch:
-            save_sent_file(profile_dir, os.path.basename(file_path))
-
-        async with lock:
-            remaining_files_ref[0] -= len(photo_batch)
-            message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
-            await client(EditMessageRequest(
-                peer=chat_id,
-                id=pinned_message_id,
-                message=message_content
-            ))
-            LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+            async with lock:
+                remaining_files_ref[0] -= len(photo_batch)
+                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+                await client(EditMessageRequest(
+                    peer=chat_id,
+                    id=pinned_message_id,
+                    message=message_content
+                ))
+                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
