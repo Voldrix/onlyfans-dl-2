@@ -10,6 +10,7 @@ from PIL import Image
 from moviepy.editor import VideoFileClip
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import exceptions as aiogram_exceptions
+from telethon.tl.types import InputMediaUploadedDocument, DocumentAttributeVideo
 from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
