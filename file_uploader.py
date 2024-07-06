@@ -174,7 +174,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-#new3
+#new4
 from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
 
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
@@ -187,7 +187,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            # Загружаем видео на сервер Telegram и получаем объект InputMediaUploadedDocument
+            # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
             media_group.append(InputMediaUploadedDocument(
                 file=uploaded_video,
