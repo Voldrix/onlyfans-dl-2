@@ -19,6 +19,8 @@ from aiogram import types
 from aiogram.utils import exceptions as aiogram_exceptions
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes  # Add processes here
 
+from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
+
 last_flood_wait_message_time = None  # Инициализация глобальной переменной
 
 def send_fallback_message(chat_id, message):
@@ -175,8 +177,6 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
         logger.error(f"Failed to process photo batch: {str(e)}")
         
 #new5
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         for i, file_path in enumerate(video_batch):
@@ -193,7 +193,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             post_date = os.path.basename(file_path).split('_')[0]
             caption = f"{tag} #video\n{i + 1}. {post_date}"
 
-            await client.send_file(chat_id, media, caption=caption)
+            await client.send_file(chat_id, uploaded_video, caption=caption, attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)])
 
             save_sent_file(profile_dir, os.path.basename(file_path))
 
