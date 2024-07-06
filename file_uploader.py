@@ -9,7 +9,7 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
-from telethon.tl.types import InputMediaPhoto, InputPhoto
+from telethon.tl.types import InputMediaPhotoExternal, InputMediaPhoto, InputPhoto
 from telethon.utils import get_input_photo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
@@ -151,9 +151,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
 
             # Загрузить фото на сервер Telegram и получить объект InputPhoto
             uploaded_photo = await client.upload_file(file_path)
-            input_photo = InputMediaPhoto(uploaded_photo)
-
-            media_group.append(input_photo)
+            media_group.append(InputMediaPhoto(id=uploaded_photo))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
