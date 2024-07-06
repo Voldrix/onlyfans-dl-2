@@ -174,6 +174,26 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
+async def send_video_batch(chat_id, video_batch, tag, client):
+    if not video_batch:
+        return
+
+    caption = f"{tag} #video"
+    attempts = 0
+    while attempts < 5:
+        try:
+            await client.send_file(chat_id, video_batch, caption=caption)
+            break
+        except FloodWaitError as e:
+            await handle_flood_wait(chat_id, e.seconds, client)
+            attempts += 1
+        except Exception as e:
+            logger.error(f"Failed to send video batch: {str(e)}")
+            attempts += 1
+            await asyncio.sleep(5)  # Ждем перед повторной попыткой
+    else:
+        await aiogram_bot.send_message(chat_id, f"Failed to send video batch after multiple attempts. {tag}")
+
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
@@ -199,7 +219,7 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
                 await asyncio.sleep(5)  # Ждем перед повторной попыткой
         else:
             await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
-
+            
 def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
     global current_split_process
     command = [
@@ -317,8 +337,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
-
-
+        
 async def upload_with_semaphore(semaphore, process_file, *args):
     async with semaphore:
         await process_file(*args)
