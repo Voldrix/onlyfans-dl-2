@@ -150,7 +150,8 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
 
             # Загрузить фото на сервер Telegram и получить объект InputPhoto
             uploaded_photo = await client.upload_file(file_path)
-            media_group.append(InputMediaPhoto(uploaded_photo))
+            input_photo = await client(UploadProfilePhotoRequest(file=uploaded_photo))
+            media_group.append(InputMediaPhoto(id=input_photo.photo.file_id))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
