@@ -9,7 +9,8 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
-from telethon.tl.types import InputMediaPhotoExternal, InputMediaPhoto, InputPhoto
+from telethon.tl.types import InputMediaUploadedPhoto, InputPhoto
+from telethon.tl.types import InputMediaPhotoExternal, InputMediaPhoto
 from telethon.utils import get_input_photo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
@@ -148,10 +149,9 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            # Загрузить фото на сервер Telegram и получить объект InputPhoto
+            # Загружаем фото на сервер Telegram и получаем объект InputPhoto
             uploaded_photo = await client.upload_file(file_path)
-            input_photo = await client(UploadProfilePhotoRequest(file=uploaded_photo))
-            media_group.append(InputMediaPhoto(id=input_photo.photo.file_id))
+            media_group.append(InputMediaUploadedPhoto(file=uploaded_photo))
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
@@ -174,7 +174,6 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
         
-
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
