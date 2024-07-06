@@ -163,6 +163,8 @@ async def get_command(event):
         current_batch_size = 0
 
         photo_batch = []
+        video_batch = []
+        video_batch_size = 0
         for file_path in new_files:
             file_size = os.path.getsize(file_path)
             if file_path.endswith(('jpg', 'jpeg', 'png')):
@@ -170,6 +172,25 @@ async def get_command(event):
                 if len(photo_batch) == 10:
                     await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
                     photo_batch = []
+            elif file_path.endswith('mp4'):
+                if video_batch_size + file_size <= 100 * 1024 * 1024:
+                    video_batch.append(file_path)
+                    video_batch_size += file_size
+                    if len(video_batch) == 10:
+                        await send_video_batch(event.chat_id, video_batch, tag, client)
+                        for video in video_batch:
+                            save_sent_file(profile_dir, os.path.basename(video))
+                        video_batch = []
+                        video_batch_size = 0
+                else:
+                    if video_batch:
+                        await send_video_batch(event.chat_id, video_batch, tag, client)
+                        for video in video_batch:
+                            save_sent_file(profile_dir, os.path.basename(video))
+                        video_batch = []
+                        video_batch_size = 0
+                    video_batch.append(file_path)
+                    video_batch_size = file_size
             else:
                 if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
                     current_batch_size += file_size
@@ -181,6 +202,11 @@ async def get_command(event):
 
         if photo_batch:
             await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+
+        if video_batch:
+            await send_video_batch(event.chat_id, video_batch, tag, client)
+            for video in video_batch:
+                save_sent_file(profile_dir, os.path.basename(video))
 
         await asyncio.gather(*tasks)
 
