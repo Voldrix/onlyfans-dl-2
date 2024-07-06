@@ -165,8 +165,6 @@ async def get_command(event):
 
         photo_batch = []
         video_batch = []
-        video_batch_size = 0
-
         for file_path in new_files:
             file_size = os.path.getsize(file_path)
             if file_path.endswith(('jpg', 'jpeg', 'png')):
@@ -176,11 +174,11 @@ async def get_command(event):
                     photo_batch = []
             elif file_path.endswith('mp4'):
                 video_batch.append(file_path)
-                video_batch_size += file_size
-                if video_batch_size >= 100 * 1024 * 1024 or len(video_batch) == 10:
+                current_batch_size += file_size
+                if len(video_batch) == 10 or current_batch_size > 100 * 1024 * 1024:
                     await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
                     video_batch = []
-                    video_batch_size = 0
+                    current_batch_size = 0
             else:
                 if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
                     current_batch_size += file_size
@@ -199,9 +197,20 @@ async def get_command(event):
         await asyncio.gather(*tasks)
 
         for file_path in large_files:
-            file_name = os.path.basename(file_path)
-            msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}. Use /get_big to download.")
-            TEXT_MESSAGES.append(msg.id)
+            try:
+                file_name = os.path.basename(file_path)
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                duration = "N/A"
+                if file_path.endswith('mp4'):
+                    try:
+                        video = VideoFileClip(file_path)
+                        duration = video.duration
+                    except Exception:
+                        continue  # Пропускаем поврежденный файл
+                msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
+                TEXT_MESSAGES.append(msg.id)
+            except Exception as e:
+                logger.error(f"Failed to process large file {file_path}: {str(e)}")
 
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
