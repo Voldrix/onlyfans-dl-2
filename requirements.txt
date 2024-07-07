@@ -1,5 +1,5 @@
 aiogram==2.13
-telethon==1.21.1
+telethon==1.36
 aiohttp==3.8.1
 Pillow==8.4.0
 moviepy==1.0.3
