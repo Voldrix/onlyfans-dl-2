@@ -171,6 +171,7 @@ A post with a single photo and video shouldn't be considered an album.\
 Allow messages to be limited by age through a separate mechanism/function.
 
 Telegram bot:
-* group photos to album of 10 photo
-* sort, group and post by same date
-* add more config options
+✅ group photos/videoa to album of 10 photo
+✅ sort, group and post by date / size
+✅ add thumbnails to all videos
+⌛️ add more config options...
