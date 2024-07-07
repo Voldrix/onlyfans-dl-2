@@ -41,3 +41,6 @@ delete_media_from_server = True  #False
 
 # Merge media files into albums
 merge_media_to_album = True  # or False
+
+# Sort media by date instead of size
+sort_by_date_not_by_size = True  # or False
