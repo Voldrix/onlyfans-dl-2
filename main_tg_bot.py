@@ -102,30 +102,49 @@ async def get_command(event):
         tasks = []
         current_batch_size = 0
 
-        photo_batch = []
-        video_batch = []
-        video_batch_size = 0
+        if merge_media_to_album:
+            photo_batch = []
+            video_batch = []
+            video_batch_size = 0
 
-        for file_path in new_files:
-            file_size = os.path.getsize(file_path)
-            if file_path.endswith(('jpg', 'jpeg', 'png')):
-                photo_batch.append(file_path)
-                if len(photo_batch) == 10:
-                    await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                    photo_batch = []
-            elif file_path.endswith('mp4'):
-                if video_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
-                    video_batch.append(file_path)
-                    video_batch_size += file_size
-                    if len(video_batch) == 10 or video_batch_size >= TELEGRAM_FILE_SIZE_LIMIT:
+            for file_path in new_files:
+                file_size = os.path.getsize(file_path)
+                if file_path.endswith(('jpg', 'jpeg', 'png')):
+                    photo_batch.append(file_path)
+                    if len(photo_batch) == 10:
+                        await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                        photo_batch = []
+                elif file_path.endswith('mp4'):
+                    if video_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                        video_batch.append(file_path)
+                        video_batch_size += file_size
+                        if len(video_batch) == 10 or video_batch_size >= TELEGRAM_FILE_SIZE_LIMIT:
+                            await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                            video_batch = []
+                            video_batch_size = 0
+                    else:
                         await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                        video_batch = []
-                        video_batch_size = 0
+                        video_batch = [file_path]
+                        video_batch_size = file_size
                 else:
-                    await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                    video_batch = [file_path]
-                    video_batch_size = file_size
-            else:
+                    if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                        current_batch_size += file_size
+                        tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+                    else:
+                        await asyncio.gather(*tasks)
+                        tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
+                        current_batch_size = file_size
+
+            if photo_batch:
+                await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+            
+            if video_batch:
+                await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+
+            await asyncio.gather(*tasks)
+        else:
+            for file_path in new_files:
+                file_size = os.path.getsize(file_path)
                 if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
                     current_batch_size += file_size
                     tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
@@ -134,13 +153,7 @@ async def get_command(event):
                     tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
                     current_batch_size = file_size
 
-        if photo_batch:
-            await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-        
-        if video_batch:
-            await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-
-        await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
         # Отправка сообщений о больших файлах без занесения их в sent_files.txt
         for file_path in large_files:
