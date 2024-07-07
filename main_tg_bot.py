@@ -424,7 +424,7 @@ async def check_command(event):
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
 
-        for profile in subscriptions:
+        for i, profile in enumerate(subscriptions, start=1):
             profile = profile.strip()
             profile_dir = os.path.join('.', profile)
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
@@ -434,7 +434,7 @@ async def check_command(event):
                     for file in files:
                         if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
                             total_files += 1
-                response += f"`{profile}` ({len(sent_files)}/**{total_files}**)\n"
+                response += f"{i}. `{profile}` ({len(sent_files)}/**{total_files}**)\n    #{profile}\n"
 
         if response.strip() == header + separator:
             msg = await event.respond("No downloaded profiles found.")
@@ -449,6 +449,7 @@ async def check_command(event):
     except Exception as e:
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
+
 
 
 @client.on(events.NewMessage(pattern='/erase$'))
