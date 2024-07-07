@@ -38,3 +38,6 @@ MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
 delete_media_from_server = True  #False
+
+# Merge media files into albums
+merge_media_to_album = True  # or False
