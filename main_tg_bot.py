@@ -61,22 +61,34 @@ async def get_command(event):
         ))
 
         profile_dir = username
-        new_files = []
+        photo_files = []
+        video_files = []
         large_files = []
 
         for dirpath, _, filenames in os.walk(profile_dir):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
-                    if os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
-                        new_files.append(file_path)
-                    else:
+                    if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                        photo_files.append(file_path)
+                    elif file_path.endswith('mp4') and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                        video_files.append(file_path)
+                    elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
                         large_files.append(file_path)
 
         sent_files = load_sent_files(profile_dir)
-        new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
+        photo_files = [file for file in photo_files if os.path.basename(file) not in sent_files]
+        video_files = [file for file in video_files if os.path.basename(file) not in sent_files]
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
-        new_files.sort(key=os.path.getsize)
+
+        if sort_by_date_not_by_size:
+            photo_files.sort(key=lambda x: os.path.basename(x).split('_')[0])  # Сортируем по дате из названия файла
+            video_files.sort(key=lambda x: os.path.basename(x).split('_')[0])
+        else:
+            photo_files.sort(key=os.path.getsize)
+            video_files.sort(key=os.path.getsize)
+
+        new_files = photo_files + video_files
 
         total_files = len(new_files)
         if not new_files and not large_files:
@@ -106,41 +118,33 @@ async def get_command(event):
             video_batch = []
             video_batch_size = 0
 
-            for file_path in new_files:
+            for file_path in photo_files:
                 file_size = os.path.getsize(file_path)
-                if file_path.endswith(('jpg', 'jpeg', 'png')):
-                    photo_batch.append(file_path)
-                    if len(photo_batch) == 10:
-                        await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                        photo_batch = []
-                elif file_path.endswith('mp4'):
-                    if video_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
-                        video_batch.append(file_path)
-                        video_batch_size += file_size
-                        if len(video_batch) == 10 or video_batch_size >= TELEGRAM_FILE_SIZE_LIMIT:
-                            await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                            video_batch = []
-                            video_batch_size = 0
-                    else:
-                        await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                        video_batch = [file_path]
-                        video_batch_size = file_size
-                else:
-                    if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
-                        current_batch_size += file_size
-                        tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
-                    else:
-                        await asyncio.gather(*tasks)
-                        tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
-                        current_batch_size = file_size
+                photo_batch.append(file_path)
+                if len(photo_batch) == 10:
+                    await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    photo_batch = []
 
             if photo_batch:
                 await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
-            
+
+            for file_path in video_files:
+                file_size = os.path.getsize(file_path)
+                if video_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                    video_batch.append(file_path)
+                    video_batch_size += file_size
+                    if len(video_batch) == 10 or video_batch_size >= TELEGRAM_FILE_SIZE_LIMIT:
+                        await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                        video_batch = []
+                        video_batch_size = 0
+                else:
+                    await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    video_batch = [file_path]
+                    video_batch_size = file_size
+
             if video_batch:
                 await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
 
-            await asyncio.gather(*tasks)
         else:
             for file_path in new_files:
                 file_size = os.path.getsize(file_path)
@@ -179,6 +183,8 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+
 
 
 
@@ -293,8 +299,10 @@ async def get_big_command(event):
         sent_files = load_sent_files(profile_dir)
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
 
-        # Сортировка больших файлов по возрастанию размера
-        large_files.sort(key=os.path.getsize)
+        if sort_by_date_not_by_size:
+            large_files.sort(key=lambda x: os.path.basename(x).split('_')[0])  # Сортируем по дате из названия файла
+        else:
+            large_files.sort(key=os.path.getsize)
 
         if not large_files:
             msg = await client.send_message(event.chat_id, f"No large files found for this user. {tag}")
@@ -313,7 +321,7 @@ async def get_big_command(event):
                 await process_large_file(profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
             except Exception as e:
                 logger.error(f"Failed to process large file {file_path}: {str(e)}")
-                continue  # Пропуск поврежденного файла
+                continue  # Пропускаем поврежденный файл
 
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload of large files complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
@@ -323,6 +331,8 @@ async def get_big_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+
 
        
 
