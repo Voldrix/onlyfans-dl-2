@@ -8,13 +8,13 @@ import requests
 import subprocess
 from PIL import Image
 from moviepy.editor import VideoFileClip
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, types
 from aiogram.utils import exceptions as aiogram_exceptions
 from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
-from file_uploader import save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
+from file_uploader import process_video_batch, process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
 
 
@@ -22,67 +22,6 @@ from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot
 dp = Dispatcher(aiogram_bot)
 
 flood_wait_seconds = 0  # Добавляем глобальную переменную для отслеживания времени ожидания
-
-
-def send_fallback_message(chat_id, message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message
-    }
-    response = requests.post(url, data=data)
-    if response.status_code != 200:
-        logger.error(f"Failed to send fallback message: {response.text}")
-
-
-
-def run_script(args):
-    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = [], []
-    for line in iter(process.stdout.readline, ''):
-        logger.info(line.strip())
-        stdout.append(line.strip())
-    for line in iter(process.stderr.readline, ''):
-        logger.error(line.strip())
-        stderr.append(line.strip())
-    process.stdout.close()
-    process.stderr.close()
-    process.wait()
-    return '\n'.join(stdout), '\n'.join(stderr)
-
-@client.on(events.NewMessage(pattern='/get$'))
-async def get_command_usage(event):
-    try:
-        if event.sender_id == TELEGRAM_USER_ID:
-            msg = await event.respond("Usage: /get <username or subscription number>")
-            TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
-    except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
-@client.on(events.NewMessage(pattern='/get_big$'))
-async def get_big_command_usage(event):
-    try:
-        if event.sender_id == TELEGRAM_USER_ID:
-            msg = await event.respond("Usage: /get_big <username or subscription number>")
-            TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
-    except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
-@client.on(events.NewMessage(pattern='/load$'))
-async def load_command_usage(event):
-    try:
-        if event.sender_id == TELEGRAM_USER_ID:
-            msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
-            TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
-    except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
@@ -122,22 +61,34 @@ async def get_command(event):
         ))
 
         profile_dir = username
-        new_files = []
+        photo_files = []
+        video_files = []
         large_files = []
 
         for dirpath, _, filenames in os.walk(profile_dir):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
-                    if os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
-                        new_files.append(file_path)
-                    else:
+                    if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                        photo_files.append(file_path)
+                    elif file_path.endswith('mp4') and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                        video_files.append(file_path)
+                    elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
                         large_files.append(file_path)
 
         sent_files = load_sent_files(profile_dir)
-        new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
+        photo_files = [file for file in photo_files if os.path.basename(file) not in sent_files]
+        video_files = [file for file in video_files if os.path.basename(file) not in sent_files]
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
-        new_files.sort(key=os.path.getsize)
+
+        if sort_by_date_not_by_size:
+            photo_files.sort(key=lambda x: os.path.basename(x).split('_')[0])  # Сортируем по дате из названия файла
+            video_files.sort(key=lambda x: os.path.basename(x).split('_')[0])
+        else:
+            photo_files.sort(key=os.path.getsize)
+            video_files.sort(key=os.path.getsize)
+
+        new_files = photo_files + video_files
 
         total_files = len(new_files)
         if not new_files and not large_files:
@@ -162,17 +113,50 @@ async def get_command(event):
         tasks = []
         current_batch_size = 0
 
-        for file_path in new_files:
-            file_size = os.path.getsize(file_path)
-            if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
-                current_batch_size += file_size
-                tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
-            else:
-                await asyncio.gather(*tasks)
-                tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
-                current_batch_size = file_size
+        if merge_media_to_album:
+            photo_batch = []
+            video_batch = []
+            video_batch_size = 0
 
-        await asyncio.gather(*tasks)
+            for file_path in photo_files:
+                file_size = os.path.getsize(file_path)
+                photo_batch.append(file_path)
+                if len(photo_batch) == 10:
+                    await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    photo_batch = []
+
+            if photo_batch:
+                await process_photo_batch(profile_dir, photo_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+
+            for file_path in video_files:
+                file_size = os.path.getsize(file_path)
+                if video_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                    video_batch.append(file_path)
+                    video_batch_size += file_size
+                    if len(video_batch) == 10 or video_batch_size >= TELEGRAM_FILE_SIZE_LIMIT:
+                        await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                        video_batch = []
+                        video_batch_size = 0
+                else:
+                    await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    video_batch = [file_path]
+                    video_batch_size = file_size
+
+            if video_batch:
+                await process_video_batch(profile_dir, video_batch, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
+
+        else:
+            for file_path in new_files:
+                file_size = os.path.getsize(file_path)
+                if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
+                    current_batch_size += file_size
+                    tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+                else:
+                    await asyncio.gather(*tasks)
+                    tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
+                    current_batch_size = file_size
+
+            await asyncio.gather(*tasks)
 
         # Отправка сообщений о больших файлах без занесения их в sent_files.txt
         for file_path in large_files:
@@ -200,7 +184,7 @@ async def get_command(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
-        
+
 
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
@@ -251,8 +235,10 @@ async def get_big_command(event):
         sent_files = load_sent_files(profile_dir)
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
 
-        # Сортировка больших файлов по возрастанию размера
-        large_files.sort(key=os.path.getsize)
+        if sort_by_date_not_by_size:
+            large_files.sort(key=lambda x: os.path.basename(x).split('_')[0])  # Сортируем по дате из названия файла
+        else:
+            large_files.sort(key=os.path.getsize)
 
         if not large_files:
             msg = await client.send_message(event.chat_id, f"No large files found for this user. {tag}")
@@ -271,7 +257,7 @@ async def get_big_command(event):
                 await process_large_file(profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
             except Exception as e:
                 logger.error(f"Failed to process large file {file_path}: {str(e)}")
-                continue  # Пропуск поврежденного файла
+                continue  # Пропускаем поврежденный файл
 
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload of large files complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
@@ -282,7 +268,67 @@ async def get_big_command(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
-       
+
+
+
+def send_fallback_message(chat_id, message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message
+    }
+    response = requests.post(url, data=data)
+    if response.status_code != 200:
+        logger.error(f"Failed to send fallback message: {response.text}")
+
+
+def run_script(args):
+    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = [], []
+    for line in iter(process.stdout.readline, ''):
+        logger.info(line.strip())
+        stdout.append(line.strip())
+    for line in iter(process.stderr.readline, ''):
+        logger.error(line.strip())
+        stderr.append(line.strip())
+    process.stdout.close()
+    process.stderr.close()
+    process.wait()
+    return '\n'.join(stdout), '\n'.join(stderr)
+
+@client.on(events.NewMessage(pattern='/get$'))
+async def get_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /get <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+@client.on(events.NewMessage(pattern='/get_big$'))
+async def get_big_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /get_big <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+@client.on(events.NewMessage(pattern='/load$'))
+async def load_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+   
 
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
@@ -378,7 +424,7 @@ async def check_command(event):
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
 
-        for profile in subscriptions:
+        for i, profile in enumerate(subscriptions, start=1):
             profile = profile.strip()
             profile_dir = os.path.join('.', profile)
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
@@ -388,7 +434,7 @@ async def check_command(event):
                     for file in files:
                         if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
                             total_files += 1
-                response += f"`{profile}` ({len(sent_files)}/**{total_files}**)\n"
+                response += f"{i}. `{profile}` ({len(sent_files)}/**{total_files}**)\n    #{profile}\n"
 
         if response.strip() == header + separator:
             msg = await event.respond("No downloaded profiles found.")
@@ -403,6 +449,7 @@ async def check_command(event):
     except Exception as e:
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
+
 
 
 @client.on(events.NewMessage(pattern='/erase$'))

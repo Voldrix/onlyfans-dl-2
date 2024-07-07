@@ -1,4 +1,3 @@
-# file_uploader.py
 import os
 import re
 import math
@@ -9,13 +8,77 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
+from telethon.tl.types import InputFile, InputPhoto, InputMediaUploadedPhoto, InputMediaDocument, InputMediaUploadedDocument, DocumentAttributeVideo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
+from aiogram import types
 from aiogram.utils import exceptions as aiogram_exceptions
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes  # Add processes here
 
 last_flood_wait_message_time = None  # Инициализация глобальной переменной
+
+async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
+    try:
+        media_group = []
+        captions = []
+        attributes = []
+
+        for i, file_path in enumerate(video_batch):
+            if not is_valid_file(file_path):
+                os.remove(file_path)
+                continue
+
+            uploaded_video = await client.upload_file(file_path)
+            duration, width, height = get_video_metadata(file_path)
+            thumb_path = create_thumbnail(file_path)
+
+            attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
+
+            media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=attributes,
+                thumb=await client.upload_file(thumb_path),  # Загружаем и добавляем миниатюру
+                nosound_video=True  # Устанавливаем этот атрибут
+            )
+            media_group.append(media)
+            post_date = os.path.basename(file_path).split('_')[0]
+            captions.append(f"{i + 1}. {post_date}")
+
+        if media_group:
+            caption = f"{tag} #video\n" + "\n".join(captions)
+            await client.send_file(chat_id, file=media_group, caption=caption, supports_streaming=True)
+
+            for file_path in video_batch:
+                save_sent_file(profile_dir, os.path.basename(file_path))
+
+            async with lock:
+                remaining_files_ref[0] -= len(video_batch)
+                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+                await client(EditMessageRequest(
+                    peer=chat_id,
+                    id=pinned_message_id,
+                    message=message_content
+                ))
+                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+    except Exception as e:
+        logger.error(f"Failed to process video batch: {str(e)}")
+
+# Добавление функций для получения метаданных видео и создания миниатюры
+
+def get_video_metadata(file_path):
+    video = VideoFileClip(file_path)
+    duration = int(video.duration)
+    width, height = video.size
+    return duration, width, height
+
+def create_thumbnail(file_path):
+    video = VideoFileClip(file_path)
+    thumb_path = file_path.replace(".mp4", ".jpg")
+    video.save_frame(thumb_path, t=1.0)
+    return thumb_path
+
 
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
@@ -135,6 +198,42 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
+async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
+    try:
+        media_group = []
+        captions = []
+
+        for i, file_path in enumerate(photo_batch):
+            if not is_valid_file(file_path):
+                os.remove(file_path)
+                continue
+
+            # Загружаем фото на сервер Telegram и получаем объект InputPhoto
+            uploaded_photo = await client.upload_file(file_path)
+            media_group.append(InputMediaUploadedPhoto(file=uploaded_photo))
+            post_date = os.path.basename(file_path).split('_')[0]
+            captions.append(f"{i + 1}. {post_date}")
+
+        if media_group:
+            caption = f"{tag} #photo\n" + "\n".join(captions)  # Добавляем тег #photo
+            await client.send_file(chat_id, media_group, caption=caption)
+
+            for file_path in photo_batch:
+                save_sent_file(profile_dir, os.path.basename(file_path))
+
+            async with lock:
+                remaining_files_ref[0] -= len(photo_batch)
+                message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
+                await client(EditMessageRequest(
+                    peer=chat_id,
+                    id=pinned_message_id,
+                    message=message_content
+                ))
+                LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+    except Exception as e:
+        logger.error(f"Failed to process photo batch: {str(e)}")
+        
+       
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
@@ -160,7 +259,7 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
                 await asyncio.sleep(5)  # Ждем перед повторной попыткой
         else:
             await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
-
+            
 def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
     global current_split_process
     command = [
@@ -180,6 +279,7 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
     part_duration = duration / num_parts
 
     base_name, ext = os.path.splitext(file_path)
+    post_date = os.path.basename(file_path).split('_')[0]
 
     await client.send_message(chat_id, f"Detected large file: {os.path.basename(file_path)}, Size: {file_size/(1024*1024):.2f} MB, Splitting into {num_parts} parts")
 
@@ -200,29 +300,84 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
             await client.send_message(chat_id, "Splitting process was stopped.")
             break
 
-        await send_file_and_replace_with_empty(chat_id, part_path, f"{tag} Part {i + 1}", client)
+        # Create thumbnail for the part
+        thumb_path = create_thumbnail(part_path)
+
+        media = InputMediaUploadedDocument(
+            file=await client.upload_file(part_path),
+            mime_type='video/mp4',
+            attributes=[DocumentAttributeVideo(duration=part_duration, w=video.size[0], h=video.size[1], supports_streaming=True)],
+            thumb=await client.upload_file(thumb_path),
+            nosound_video=True
+        )
+
+        await client.send_file(chat_id, file=media, caption=f"{tag} Part {i + 1} #video {post_date}", supports_streaming=True)
         os.remove(part_path)  # Remove part file after sending
+        os.remove(thumb_path)  # Remove thumbnail after sending
 
     if delete_media_from_server:
+        os.remove(file_path)  # Удаляем оригинальный большой файл после обработки
+    else:
         with open(file_path, 'w') as f:
             pass  # Открываем в режиме записи, чтобы сделать файл пустым
-    else:
-        os.remove(file_path)  # Удаляем оригинальный большой файл
 
     current_split_process = None  # Reset the process variable
 
 
+
 async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client):
     try:
-        # Добавляем вызов save_sent_file после успешной отправки файла
-        await split_and_send_large_file(chat_id, file_path, tag, client)
-        if delete_media_from_server:
-            with open(file_path, 'w') as f:
-                pass  # Open in write mode to make file empty
-        else:
+        if not is_valid_file(file_path):
             os.remove(file_path)
-        
-        # Сохраняем отправленный файл
+            return
+
+        file_size = os.path.getsize(file_path)
+        if file_size > TELEGRAM_FILE_SIZE_LIMIT:
+            await split_and_send_large_file(chat_id, file_path, tag, client)
+        else:
+            uploaded_video = await client.upload_file(file_path)
+            duration, width, height = get_video_metadata(file_path)
+            thumb_path = create_thumbnail(file_path)
+            post_date = os.path.basename(file_path).split('_')[0]
+
+            attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
+
+            media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=attributes,
+                thumb=await client.upload_file(thumb_path),
+                nosound_video=True
+            )
+
+            attempts = 0
+            while attempts < 5:
+                try:
+                    msg = await client.send_file(chat_id, file=media, caption=f"{tag} #video {post_date}", supports_streaming=True)
+                    USER_MESSAGES.append(msg.id)
+                    break
+                except asyncio.exceptions.TimeoutError:
+                    attempts += 1
+                    await asyncio.sleep(5)  # Wait for 5 seconds before retrying
+                except FloodWaitError as e:
+                    await handle_flood_wait(chat_id, e.seconds, client)
+                    attempts += 1
+                except Exception as e:
+                    logger.error(f"Failed to send file {file_path} on attempt {attempts + 1}: {str(e)}")
+                    attempts += 1
+                    await asyncio.sleep(5)
+            else:
+                logger.error(f"Failed to send file {file_path} after multiple attempts")
+                return
+
+            if delete_media_from_server:
+                os.remove(file_path)
+            else:
+                with open(file_path, 'w') as f:
+                    pass  # Open in write mode to make the file empty
+
+            os.remove(thumb_path)  # Remove thumbnail after sending
+
         save_sent_file(profile_dir, os.path.basename(file_path))
 
         async with lock:
@@ -236,6 +391,11 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
+    except Exception as e:
+        logger.error(f"Failed to process large file {file_path}: {str(e)}")
+
+
+
 
 
 async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
@@ -278,8 +438,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
-
-
+        
 async def upload_with_semaphore(semaphore, process_file, *args):
     async with semaphore:
         await process_file(*args)
@@ -339,7 +498,7 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
         TEXT_MESSAGES.append(msg.id)
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
-    TEXT_MESSAGES.append(upload_complete_msg.id)
+    TEXT_MESSAGES.append(msg.id)
 
 async def send_existing_large_media(username, chat_id, tag, pinned_message_id, client):
     profile_dir = username
@@ -375,7 +534,6 @@ async def send_existing_large_media(username, chat_id, tag, pinned_message_id, c
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload of large files complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
-
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
