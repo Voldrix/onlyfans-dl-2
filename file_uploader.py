@@ -279,6 +279,7 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
     part_duration = duration / num_parts
 
     base_name, ext = os.path.splitext(file_path)
+    post_date = os.path.basename(file_path).split('_')[0]
 
     await client.send_message(chat_id, f"Detected large file: {os.path.basename(file_path)}, Size: {file_size/(1024*1024):.2f} MB, Splitting into {num_parts} parts")
 
@@ -299,8 +300,20 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
             await client.send_message(chat_id, "Splitting process was stopped.")
             break
 
-        await send_file_and_replace_with_empty(chat_id, part_path, f"{tag} Part {i + 1}", client)
+        # Create thumbnail for the part
+        thumb_path = create_thumbnail(part_path)
+
+        media = InputMediaUploadedDocument(
+            file=await client.upload_file(part_path),
+            mime_type='video/mp4',
+            attributes=[DocumentAttributeVideo(duration=part_duration, w=video.size[0], h=video.size[1], supports_streaming=True)],
+            thumb=await client.upload_file(thumb_path),
+            nosound_video=True
+        )
+
+        await client.send_file(chat_id, file=media, caption=f"{tag} Part {i + 1} #video {post_date}", supports_streaming=True)
         os.remove(part_path)  # Remove part file after sending
+        os.remove(thumb_path)  # Remove thumbnail after sending
 
     if delete_media_from_server:
         os.remove(file_path)  # Удаляем оригинальный большой файл после обработки
@@ -309,6 +322,7 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
             pass  # Открываем в режиме записи, чтобы сделать файл пустым
 
     current_split_process = None  # Reset the process variable
+
 
 
 async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client):
@@ -324,6 +338,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             uploaded_video = await client.upload_file(file_path)
             duration, width, height = get_video_metadata(file_path)
             thumb_path = create_thumbnail(file_path)
+            post_date = os.path.basename(file_path).split('_')[0]
 
             attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
 
@@ -338,7 +353,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             attempts = 0
             while attempts < 5:
                 try:
-                    msg = await client.send_file(chat_id, file=media, caption=tag, supports_streaming=True)
+                    msg = await client.send_file(chat_id, file=media, caption=f"{tag} #video {post_date}", supports_streaming=True)
                     USER_MESSAGES.append(msg.id)
                     break
                 except asyncio.exceptions.TimeoutError:
@@ -361,6 +376,8 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
                 with open(file_path, 'w') as f:
                     pass  # Open in write mode to make the file empty
 
+            os.remove(thumb_path)  # Remove thumbnail after sending
+
         save_sent_file(profile_dir, os.path.basename(file_path))
 
         async with lock:
@@ -376,6 +393,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
         pass
     except Exception as e:
         logger.error(f"Failed to process large file {file_path}: {str(e)}")
+
 
 
 
