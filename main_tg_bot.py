@@ -186,70 +186,6 @@ async def get_command(event):
 
 
 
-
-
-def send_fallback_message(chat_id, message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message
-    }
-    response = requests.post(url, data=data)
-    if response.status_code != 200:
-        logger.error(f"Failed to send fallback message: {response.text}")
-
-
-
-def run_script(args):
-    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = [], []
-    for line in iter(process.stdout.readline, ''):
-        logger.info(line.strip())
-        stdout.append(line.strip())
-    for line in iter(process.stderr.readline, ''):
-        logger.error(line.strip())
-        stderr.append(line.strip())
-    process.stdout.close()
-    process.stderr.close()
-    process.wait()
-    return '\n'.join(stdout), '\n'.join(stderr)
-
-@client.on(events.NewMessage(pattern='/get$'))
-async def get_command_usage(event):
-    try:
-        if event.sender_id == TELEGRAM_USER_ID:
-            msg = await event.respond("Usage: /get <username or subscription number>")
-            TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
-    except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
-@client.on(events.NewMessage(pattern='/get_big$'))
-async def get_big_command_usage(event):
-    try:
-        if event.sender_id == TELEGRAM_USER_ID:
-            msg = await event.respond("Usage: /get_big <username or subscription number>")
-            TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
-    except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
-@client.on(events.NewMessage(pattern='/load$'))
-async def load_command_usage(event):
-    try:
-        if event.sender_id == TELEGRAM_USER_ID:
-            msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
-            TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
-    except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
-
-
-        
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
     try:
@@ -334,7 +270,65 @@ async def get_big_command(event):
 
 
 
-       
+
+def send_fallback_message(chat_id, message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message
+    }
+    response = requests.post(url, data=data)
+    if response.status_code != 200:
+        logger.error(f"Failed to send fallback message: {response.text}")
+
+
+def run_script(args):
+    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = [], []
+    for line in iter(process.stdout.readline, ''):
+        logger.info(line.strip())
+        stdout.append(line.strip())
+    for line in iter(process.stderr.readline, ''):
+        logger.error(line.strip())
+        stderr.append(line.strip())
+    process.stdout.close()
+    process.stderr.close()
+    process.wait()
+    return '\n'.join(stdout), '\n'.join(stderr)
+
+@client.on(events.NewMessage(pattern='/get$'))
+async def get_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /get <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+@client.on(events.NewMessage(pattern='/get_big$'))
+async def get_big_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /get_big <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+@client.on(events.NewMessage(pattern='/load$'))
+async def load_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+   
 
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
