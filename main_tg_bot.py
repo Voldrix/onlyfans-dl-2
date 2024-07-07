@@ -150,10 +150,10 @@ async def get_command(event):
                 file_size = os.path.getsize(file_path)
                 if current_batch_size + file_size <= TELEGRAM_FILE_SIZE_LIMIT:
                     current_batch_size += file_size
-                    tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client))
+                    tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client, delete_media_from_server))
                 else:
                     await asyncio.gather(*tasks)
-                    tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)]
+                    tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client, delete_media_from_server)]
                     current_batch_size = file_size
 
             await asyncio.gather(*tasks)
@@ -183,6 +183,8 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+
 
 
 
