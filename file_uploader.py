@@ -1,4 +1,3 @@
-# file_uploader.py
 import os
 import re
 import math
@@ -9,11 +8,7 @@ import subprocess
 import logging
 from PIL import Image
 from moviepy.editor import VideoFileClip
-
-from telethon.tl.functions.messages import EditMessageRequest
-from telethon.tl.types import DocumentAttributeVideo, InputMediaUploadedDocument
-
-from telethon.tl.types import InputPhoto, InputMediaUploadedPhoto
+from telethon.tl.types import InputFile, InputPhoto, InputMediaUploadedPhoto, InputMediaDocument, InputMediaUploadedDocument, DocumentAttributeVideo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
 from config import *
@@ -27,29 +22,33 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
     try:
         media_group = []
         captions = []
+        attributes = []
 
         for i, file_path in enumerate(video_batch):
             if not is_valid_file(file_path):
                 os.remove(file_path)
                 continue
 
-            # Загружаем видео на сервер Telegram и получаем объект InputFile
             uploaded_video = await client.upload_file(file_path)
-            media_group.append(InputMediaUploadedDocument(
+            duration, width, height = get_video_metadata(file_path)
+            thumb_path = create_thumbnail(file_path)
+
+            attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
+
+            media = InputMediaUploadedDocument(
                 file=uploaded_video,
                 mime_type='video/mp4',
-                attributes=[DocumentAttributeVideo(duration=0, w=0, h=0)]
-            ))
+                attributes=attributes,
+                thumb=await client.upload_file(thumb_path),  # Загружаем и добавляем миниатюру
+                nosound_video=True  # Устанавливаем этот атрибут
+            )
+            media_group.append(media)
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{i + 1}. {post_date}")
 
         if media_group:
-            full_caption = f"{tag} #video\n" + "\n".join(captions)  # Добавляем тег #video и дату
-            await client.send_file(
-                chat_id,
-                file=media_group,
-                caption=full_caption
-            )
+            caption = f"{tag} #video\n" + "\n".join(captions)
+            await client.send_file(chat_id, file=media_group, caption=caption, supports_streaming=True)
 
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
@@ -65,7 +64,19 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
-        
+
+def get_video_metadata(file_path):
+    video = VideoFileClip(file_path)
+    duration = int(video.duration)
+    width, height = video.size
+    return duration, width, height
+
+def create_thumbnail(file_path):
+    video = VideoFileClip(file_path)
+    thumb_path = file_path.replace(".mp4", ".jpg")
+    video.save_frame(thumb_path, t=1.0)
+    return thumb_path
+
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
     data = {
@@ -217,9 +228,9 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 ))
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
-        logger.error(f"Failed to process photo batch: {str(e)}")     
+        logger.error(f"Failed to process photo batch: {str(e)}")
         
-        
+       
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
@@ -423,7 +434,7 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
         TEXT_MESSAGES.append(msg.id)
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
-    TEXT_MESSAGES.append(upload_complete_msg.id)
+    TEXT_MESSAGES.append(msg.id)
 
 async def send_existing_large_media(username, chat_id, tag, pinned_message_id, client):
     profile_dir = username
@@ -459,7 +470,6 @@ async def send_existing_large_media(username, chat_id, tag, pinned_message_id, c
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload of large files complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
-
 
 async def download_media_without_sending(username, chat_id, tag, max_age):
     profile_dir = username
