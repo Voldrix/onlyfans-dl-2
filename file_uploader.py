@@ -65,6 +65,8 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
 
+# Добавление функций для получения метаданных видео и создания миниатюры
+
 def get_video_metadata(file_path):
     video = VideoFileClip(file_path)
     duration = int(video.duration)
@@ -76,6 +78,7 @@ def create_thumbnail(file_path):
     thumb_path = file_path.replace(".mp4", ".jpg")
     video.save_frame(thumb_path, t=1.0)
     return thumb_path
+
 
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
@@ -300,25 +303,64 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
         os.remove(part_path)  # Remove part file after sending
 
     if delete_media_from_server:
+        os.remove(file_path)  # Удаляем оригинальный большой файл после обработки
+    else:
         with open(file_path, 'w') as f:
             pass  # Открываем в режиме записи, чтобы сделать файл пустым
-    else:
-        os.remove(file_path)  # Удаляем оригинальный большой файл
 
     current_split_process = None  # Reset the process variable
 
 
 async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client):
     try:
-        # Добавляем вызов save_sent_file после успешной отправки файла
-        await split_and_send_large_file(chat_id, file_path, tag, client)
-        if delete_media_from_server:
-            with open(file_path, 'w') as f:
-                pass  # Open in write mode to make file empty
-        else:
+        if not is_valid_file(file_path):
             os.remove(file_path)
-        
-        # Сохраняем отправленный файл
+            return
+
+        file_size = os.path.getsize(file_path)
+        if file_size > TELEGRAM_FILE_SIZE_LIMIT:
+            await split_and_send_large_file(chat_id, file_path, tag, client)
+        else:
+            uploaded_video = await client.upload_file(file_path)
+            duration, width, height = get_video_metadata(file_path)
+            thumb_path = create_thumbnail(file_path)
+
+            attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
+
+            media = InputMediaUploadedDocument(
+                file=uploaded_video,
+                mime_type='video/mp4',
+                attributes=attributes,
+                thumb=await client.upload_file(thumb_path),
+                nosound_video=True
+            )
+
+            attempts = 0
+            while attempts < 5:
+                try:
+                    msg = await client.send_file(chat_id, file=media, caption=tag, supports_streaming=True)
+                    USER_MESSAGES.append(msg.id)
+                    break
+                except asyncio.exceptions.TimeoutError:
+                    attempts += 1
+                    await asyncio.sleep(5)  # Wait for 5 seconds before retrying
+                except FloodWaitError as e:
+                    await handle_flood_wait(chat_id, e.seconds, client)
+                    attempts += 1
+                except Exception as e:
+                    logger.error(f"Failed to send file {file_path} on attempt {attempts + 1}: {str(e)}")
+                    attempts += 1
+                    await asyncio.sleep(5)
+            else:
+                logger.error(f"Failed to send file {file_path} after multiple attempts")
+                return
+
+            if delete_media_from_server:
+                os.remove(file_path)
+            else:
+                with open(file_path, 'w') as f:
+                    pass  # Open in write mode to make the file empty
+
         save_sent_file(profile_dir, os.path.basename(file_path))
 
         async with lock:
@@ -332,6 +374,10 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
+    except Exception as e:
+        logger.error(f"Failed to process large file {file_path}: {str(e)}")
+
+
 
 
 async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
