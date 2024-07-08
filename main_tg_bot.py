@@ -969,19 +969,19 @@ async def setup_aiogram_bot_commands(dp: Dispatcher):
         {"command": "list", "description": "Show list of active subscriptions"},
         {"command": "load", "description": "Download media to server without sending"},
         {"command": "check", "description": "Check media count for all (or for chosen profile)"},
-        {"command": "get", "description": "Download media and send to this chat"},
-        {"command": "get_big", "description": "Download and send large media files"},
+        {"command": "get", "description": "Upload media files to this chat"},
+        {"command": "get_big", "description": "Upload 2GB+ media files to this chat"},
         {"command": "clear", "description": "Clear non-media messages in chat"},
-        {"command": "del", "description": "Delete profile folder from server"},
-        {"command": "switch", "description": "Switch to next bot token"},
+        {"command": "del", "description": "Delete chosen profile folder from server"},
+        {"command": "switch", "description": "Switch to next bot token (handle FloodWaitError)"},
         {"command": "restart", "description": "Stop current process and restart bot"},
         {"command": "user_id", "description": "Update USER_ID"},
         {"command": "user_agent", "description": "Update USER_AGENT"},
         {"command": "x_bc", "description": "Update X_BC"},
         {"command": "sess_cookie", "description": "Update SESS_COOKIE"},
-        {"command": "erase", "description": "Erase chat messages with a specific hashtag"},
+        {"command": "erase", "description": "Erase text/media files with a specific hashtag"},
         {"command": "force_add", "description": "Force add subscription in /check and fill sent_files.txt for username (optional)"},
-        {"command": "rm_sent_file", "description": "Remove sent_files.txt for a user"}
+        {"command": "rm_sent_file", "description": "Remove sent_files.txt for a chosen user"}
     ]
 
     await dp.bot.set_my_commands(commands)
