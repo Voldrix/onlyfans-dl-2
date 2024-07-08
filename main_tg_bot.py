@@ -93,7 +93,7 @@ async def get_command(event):
                     if is_valid_file(file_path):
                         if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
                             photo_files.append(file_path)
-                        elif file_path.endswith(('mp4', 'm4v')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
+                        elif file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
                             video_files.append(file_path)
                         elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
                             large_files.append(file_path)
@@ -187,7 +187,7 @@ async def get_command(event):
                 file_name = os.path.basename(file_path)
                 file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
                 duration = "N/A"
-                if file_path.endswith(('mp4', 'm4v')):  # Добавлено 'm4v' здесь
+                if file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')):  # Добавлено 'm4v' здесь
                     try:
                         video = VideoFileClip(file_path)
                         duration = video.duration
@@ -490,7 +490,7 @@ def get_media_files_size(directory):
     total_size = 0
     for dirpath, _, filenames in os.walk(directory):
         for filename in filenames:
-            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'mp3', 'gif')) and filename != 'sent_files.txt':
+            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'MOV', 'webm', 'mp3', 'gif')) and filename != 'sent_files.txt':
                 file_path = os.path.join(dirpath, filename)
                 total_size += os.path.getsize(file_path)
     return total_size / (1024 * 1024)
@@ -859,7 +859,7 @@ async def clear_command(event):
             for msg_id in TEXT_MESSAGES + USER_MESSAGES:
                 try:
                     message = await client.get_messages(event.chat_id, ids=msg_id)
-                    if message and (not message.media or 'Detected large file' in message.message):
+                    if message and (not message.media or 'Detected large file' in message.message or 'Unexpected error occurred' in message.message):
                         messages_to_delete.append(msg_id)
                 except:
                     continue
