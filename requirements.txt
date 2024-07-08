@@ -1,4 +1,4 @@
-aiogram==2.13
+aiogram==2.25.1
 telethon==1.36
 aiohttp==3.8.6
 Pillow==10.4.0
