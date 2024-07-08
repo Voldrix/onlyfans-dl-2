@@ -139,7 +139,9 @@ To use with Telegram Bot:
 * `/x_bc`: Update X_BC.
 * `/sess_cookie`: Update SESS_COOKIE.
 * `/erase`: Erase chat messages with a specific hashtag.
-
+* `/force_add`: Force add subscription in /check and fill sent_files.txt for username (optional).
+* `/rm_sent_file`: Remove sent_files.txt for a user.
+  
 **Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use `/switch` to switch to your second BotFather bot.
 
 ## Session Variables
