@@ -293,7 +293,13 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
     part_duration = duration / num_parts
 
     base_name, ext = os.path.splitext(file_path)
-    post_date = os.path.basename(file_path).split('_')[0]
+    
+    # Получаем дату из имени файла или дату создания файла
+    post_date = get_date_from_filename(os.path.basename(file_path))
+    if not post_date:
+        post_date = get_file_creation_date(file_path).strftime('%Y-%m-%d')
+    else:
+        post_date = post_date.strftime('%Y-%m-%d')
 
     await client.send_message(chat_id, f"Detected large file: {os.path.basename(file_path)}, Size: {file_size/(1024*1024):.2f} MB, Splitting into {num_parts} parts")
 
@@ -351,6 +357,8 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             thumb_path = create_thumbnail(file_path)
 
             file_name = os.path.basename(file_path)
+            
+            # Получаем дату из имени файла или дату создания файла
             post_date = get_date_from_filename(file_name)
             if not post_date:
                 post_date = get_file_creation_date(file_path).strftime('%Y-%m-%d')
@@ -407,6 +415,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
         pass
     except Exception as e:
         logger.error(f"Failed to process large file {file_path}: {str(e)}")
+
 
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
