@@ -14,7 +14,7 @@ from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest, GetHistoryRequest
 from config import *
-from file_uploader import process_video_batch, process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
+from file_uploader import is_valid_file, process_video_batch, process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
 
 # Initialize aiogram bot
@@ -90,12 +90,15 @@ async def get_command(event):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
-                    if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
-                        photo_files.append(file_path)
-                    elif file_path.endswith(('mp4', 'm4v')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
-                        video_files.append(file_path)
-                    elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
-                        large_files.append(file_path)
+                    if is_valid_file(file_path):
+                        if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                            photo_files.append(file_path)
+                        elif file_path.endswith(('mp4', 'm4v')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
+                            video_files.append(file_path)
+                        elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
+                            large_files.append(file_path)
+                    else:
+                        logger.error(f"Invalid file skipped: {file_path}")
 
         sent_files = load_sent_files(profile_dir)
         photo_files = [file for file in photo_files if os.path.basename(file) not in sent_files]
@@ -248,7 +251,10 @@ async def get_big_command(event):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 if not filename.endswith('.part') and os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT and 'sent_files.txt' not in file_path:
-                    large_files.append(file_path)
+                    if is_valid_file(file_path):
+                        large_files.append(file_path)
+                    else:
+                        logger.error(f"Invalid file skipped: {file_path}")
 
         sent_files = load_sent_files(profile_dir)
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
@@ -284,6 +290,7 @@ async def get_big_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
