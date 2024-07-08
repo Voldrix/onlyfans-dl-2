@@ -27,7 +27,7 @@ def get_video_metadata(file_path):
 
 def create_thumbnail(file_path):
     video = VideoFileClip(file_path)
-    thumb_path = file_path.replace(".mp4", ".jpg").replace(".m4v", ".jpg")  # Добавлено замену для .m4v
+    thumb_path = file_path.replace(".mp4", ".jpg").replace(".m4v", ".jpg").replace(".MOV", ".jpg").replace(".webm", ".jpg")  # Добавлено замену для .m4v
     video.save_frame(thumb_path, t=1.0)
     return thumb_path
 
@@ -134,7 +134,7 @@ def is_valid_file(file_path):
         except Exception as e:
             logger.error(f"Invalid image file {file_path}: {e}")
             return False
-    elif file_path.endswith(('mp4', 'm4v')):  # Добавлено 'm4v' здесь
+    elif file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')):  # Добавлено 'm4v' здесь
         try:
             with VideoFileClip(file_path) as video:
                 return video.duration > 1
@@ -147,7 +147,7 @@ def estimate_download_size(profile_dir):
     total_size = 0
     for dirpath, _, filenames in os.walk(profile_dir):
         for filename in filenames:
-            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'mp3', 'gif')):
+            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'MOV', 'webm', 'mp3', 'gif')):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
@@ -258,7 +258,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 save_sent_file(profile_dir, os.path.basename(file_path))
                 if delete_media_from_server:
                     nullify_file(file_path)
-                thumb_path = file_path.replace(".mp4", ".jpg").replace(".m4v", ".jpg")
+                thumb_path = file_path.replace(".mp4", ".jpg").replace(".m4v", ".jpg").replace(".MOV", ".jpg").replace(".webm", ".jpg")
                 if os.path.exists(thumb_path):
                     os.remove(thumb_path)
 
@@ -335,10 +335,9 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
         os.remove(thumb_path)
 
     if delete_media_from_server:
-        os.remove(file_path)
-    else:
         with open(file_path, 'w') as f:
             pass
+    # Удаление `else` блока, так как ничего не нужно делать, если delete_media_from_server = False
 
     current_split_process = None
 
@@ -396,7 +395,8 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
                 return
 
             if delete_media_from_server:
-                nullify_file(file_path)
+                with open(file_path, 'w') as f:
+                    pass
 
             os.remove(thumb_path)
 
@@ -415,6 +415,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
         pass
     except Exception as e:
         logger.error(f"Failed to process large file {file_path}: {str(e)}")
+
 
 
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
@@ -451,7 +452,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
 
         if file_name.endswith(('jpg', 'jpeg', 'png')):
             media_type = 'photo'
-        elif file_name.endswith(('mp4', 'm4v')):
+        elif file_name.endswith(('mp4', 'm4v', 'MOV', 'webm')):
             media_type = 'video'
         elif file_name.endswith('mp3'):
             media_type = 'audio'
@@ -469,7 +470,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
         full_tag = f"{tag} #{media_type} {post_date}"
 
         if is_valid_file(file_path):
-            if file_name.endswith(('mp4', 'm4v')):
+            if file_name.endswith(('mp4', 'm4v', 'MOV', 'webm')):
                 thumb_path = create_thumbnail(file_path)
                 media = InputMediaUploadedDocument(
                     file=await client.upload_file(file_path),
@@ -510,7 +511,7 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
             if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
                 if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
                     photo_files.append(file_path)
-                elif file_path.endswith(('mp4', 'm4v')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
+                elif file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
                     video_files.append(file_path)
                 elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
                     large_files.append(file_path)
@@ -564,7 +565,7 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
         video_batch_size = 0
 
         for file_path in new_files:
-            if file_path.endswith(('mp4', 'm4v')):
+            if file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')):
                 file_size = os.path.getsize(file_path)
                 if file_size > 100 * 1024 * 1024:
                     await process_video_batch(profile_dir, [file_path], chat_id, tag, pinned_message_id, remaining_files, lock, client)
