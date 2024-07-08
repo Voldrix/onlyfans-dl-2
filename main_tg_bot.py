@@ -410,6 +410,75 @@ async def track_user_messages(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
+@client.on(events.NewMessage(pattern='/force_add$'))
+async def force_add_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /force_add <username (optional)>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+@client.on(events.NewMessage(pattern='/force_add(.*)'))
+async def force_add_command(event):
+    try:
+        if event.sender_id != TELEGRAM_USER_ID:
+            msg = await event.respond("Unauthorized access.")
+            USER_MESSAGES.append(msg.id)
+            logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+            return
+
+        target = event.pattern_match.group(1).strip()
+        manual_subscriptions = set()
+
+        # Загрузка существующих подписок из subscriptions_list.txt
+        existing_subscriptions = set()
+        try:
+            with open("subscriptions_list.txt", "r") as f:
+                existing_subscriptions.update(line.strip() for line in f)
+        except FileNotFoundError:
+            pass
+
+        # Загрузка существующих подписок из subscriptions_manual.txt
+        try:
+            with open("subscriptions_manual.txt", "r") as f:
+                manual_subscriptions.update(line.strip() for line in f)
+        except FileNotFoundError:
+            pass
+
+        if target:
+            # Создание и заполнение sent_files.txt для указанного профиля
+            profile_dir = target
+            if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
+                sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
+                with open(sent_files_path, 'w') as sent_files:
+                    for dirpath, _, filenames in os.walk(profile_dir):
+                        for filename in filenames:
+                            if filename.endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')) and filename != 'sent_files.txt':
+                                sent_files.write(filename + '\n')
+                msg = await event.respond(f"Sent files list created for {target}.")
+            else:
+                msg = await event.respond(f"Directory for user {target} not found.")
+            TEXT_MESSAGES.append(msg.id)
+        else:
+            # Заполнение файла subscriptions_manual.txt имеющимися папками
+            for item in os.listdir('.'):
+                if os.path.isdir(item) and item not in ['BACKUP', '__pycache__', '.git']:
+                    if item not in existing_subscriptions:
+                        manual_subscriptions.add(item)
+
+            with open("subscriptions_manual.txt", "w") as f:
+                for sub in sorted(manual_subscriptions):
+                    f.write(sub + '\n')
+
+            msg = await event.respond("Manual subscriptions updated.")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+
+
+
 @client.on(events.NewMessage(pattern='/check$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -421,10 +490,19 @@ async def check_command(event):
     try:
         header = "**__profile (sent/total)__**\n"
         separator = "--------------------------\n"
-        response = header + separator  # Adding the header and separator to the response
+        response = header + separator
 
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
+
+        manual_subscriptions = []
+        try:
+            with open("subscriptions_manual.txt", "r") as f:
+                manual_subscriptions = f.readlines()
+        except FileNotFoundError:
+            pass
+
+        subscriptions += manual_subscriptions
 
         for i, profile in enumerate(subscriptions, start=1):
             profile = profile.strip()
@@ -432,11 +510,14 @@ async def check_command(event):
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
                 sent_files = load_sent_files(profile_dir)
                 total_files = 0
+                actual_sent_files = 0
                 for root, _, files in os.walk(profile_dir):
                     for file in files:
                         if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
                             total_files += 1
-                response += f"{i}. `{profile}` ({len(sent_files)}/**{total_files}**)\n    #{profile}\n"
+                            if file in sent_files:
+                                actual_sent_files += 1
+                response += f"{i}. `{profile}` ({actual_sent_files}/**{total_files}**)\n    #{profile}\n"
 
         if response.strip() == header + separator:
             msg = await event.respond("No downloaded profiles found.")
@@ -452,6 +533,115 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
 
+
+@client.on(events.NewMessage(pattern='/rm_sent_file$'))
+async def rm_sent_file_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /rm_sent_file <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+
+@client.on(events.NewMessage(pattern='/rm_sent_file (.+)'))
+async def rm_sent_file_command(event):
+    if event.sender_id != TELEGRAM_USER_ID:
+        msg = await event.respond("Unauthorized access.")
+        USER_MESSAGES.append(msg.id)
+        logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+        return
+
+    target = event.pattern_match.group(1).strip()
+    try:
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+
+        with open("subscriptions_manual.txt", "r") as f:
+            subscriptions.extend(f.readlines())
+
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+        else:
+            username = target
+
+        if username not in [sub.strip() for sub in subscriptions]:
+            msg = await event.respond(f"User {username} not found in the subscriptions list.")
+            USER_MESSAGES.append(msg.id)
+            return
+
+        sent_files_path = os.path.join(username, 'sent_files.txt')
+        if os.path.exists(sent_files_path):
+            os.remove(sent_files_path)
+            msg = await event.respond(f"File {sent_files_path} has been removed.")
+            TEXT_MESSAGES.append(msg.id)
+        else:
+            msg = await event.respond(f"File {sent_files_path} not found.")
+            TEXT_MESSAGES.append(msg.id)
+    except (IndexError, FileNotFoundError):
+        msg = await event.respond("Invalid subscription number or subscriptions list not found.")
+        USER_MESSAGES.append(msg.id)
+        return
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+@client.on(events.NewMessage(pattern='/null$'))
+async def null_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /null <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await handle_flood_wait(event.chat_id, e.seconds, client)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
+async def nullify_files_in_directory(directory):
+    for dirpath, _, filenames in os.walk(directory):
+        for filename in filenames:
+            if filename != 'sent_files.txt':  # Проверяем, что это не sent_files.txt
+                file_path = os.path.join(dirpath, filename)
+                if os.path.getsize(file_path) > 0:
+                    with open(file_path, 'w') as f:
+                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
+
+
+@client.on(events.NewMessage(pattern='/null (.+)'))
+async def null_command(event):
+    try:
+        if event.sender_id != TELEGRAM_USER_ID:
+            msg = await event.respond("Unauthorized access.")
+            USER_MESSAGES.append(msg.id)
+            logger.warning(f"Unauthorized access denied for {event.sender_id}.")
+            return
+
+        target = event.pattern_match.group(1).strip()
+        with open("subscriptions_list.txt", "r") as f:
+            subscriptions = f.readlines()
+
+        if target.isdigit():
+            target_index = int(target) - 1
+            if target_index < 0 or target_index >= len(subscriptions):
+                raise IndexError
+            username = subscriptions[target_index].strip()
+        else:
+            username = target
+
+        tag = f"#{username}"
+
+        if not os.path.exists(username):
+            msg = await event.respond(f"Directory for user {username} not found.")
+            USER_MESSAGES.append(msg.id)
+            return
+
+        await nullify_files_in_directory(username)
+        msg = await event.respond(f"All media files in the directory for user {username} have been nullified.")
+        USER_MESSAGES.append(msg.id)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
 
 @client.on(events.NewMessage(pattern='/erase$'))
@@ -736,10 +926,14 @@ async def setup_aiogram_bot_commands(dp: Dispatcher):
         {"command": "user_agent", "description": "Update USER_AGENT"},
         {"command": "x_bc", "description": "Update X_BC"},
         {"command": "sess_cookie", "description": "Update SESS_COOKIE"},
-        {"command": "erase", "description": "Erase chat messages with a specific hashtag"}
+        {"command": "erase", "description": "Erase chat messages with a specific hashtag"},
+        {"command": "force_add", "description": "Force add subscription in /check and fill sent_files.txt for username (optional)"},
+        {"command": "rm_sent_file", "description": "Remove sent_files.txt for a user"}
     ]
 
     await dp.bot.set_my_commands(commands)
+
+
 
 async def on_startup(dp):
     await setup_aiogram_bot_commands(dp)
@@ -752,3 +946,5 @@ def main():
 if __name__ == '__main__':
     from aiogram import executor
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+
+
