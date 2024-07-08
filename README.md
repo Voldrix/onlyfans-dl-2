@@ -127,7 +127,7 @@ To use with Telegram Bot:
 ## Description of Telegram Bot Commands
 * `/list`: Show the list of active subscriptions.
 * `/load`: Download media files to the server without sending to the chat.
-* `/check`: Check downloaded profiles and media file count.
+* `/check`: Check media count for all (or for chosen profile).
 * `/get`: Download media files and send them to this chat.
 * `/get_big`: Download and send large media files.
 * `/clear`: Clear the chat of non-media messages.
