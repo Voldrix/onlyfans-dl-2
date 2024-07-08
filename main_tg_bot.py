@@ -843,7 +843,7 @@ async def clear_command(event):
             for msg_id in TEXT_MESSAGES + USER_MESSAGES:
                 try:
                     message = await client.get_messages(event.chat_id, ids=msg_id)
-                    if message and not message.media:
+                    if message and (not message.media or 'Detected large file' in message.message):
                         messages_to_delete.append(msg_id)
                 except:
                     continue
@@ -858,6 +858,7 @@ async def clear_command(event):
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/switch$'))
 async def switch_command(event):
