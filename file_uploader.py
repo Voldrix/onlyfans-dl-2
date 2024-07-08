@@ -7,6 +7,7 @@ import requests
 import subprocess
 import logging
 from PIL import Image
+from datetime import datetime
 from moviepy.editor import VideoFileClip
 from telethon.tl.types import InputFile, InputPhoto, InputMediaUploadedPhoto, InputMediaDocument, InputMediaUploadedDocument, DocumentAttributeVideo
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
@@ -31,6 +32,11 @@ def create_thumbnail(file_path):
     thumb_path = file_path.replace(".mp4", ".jpg")
     video.save_frame(thumb_path, t=1.0)
     return thumb_path
+
+# Функция для зануления файла
+def nullify_file(file_path):
+    with open(file_path, 'w') as f:
+        pass  # Открываем файл в режиме записи, чтобы сделать его пустым
 
 
 def send_fallback_message(chat_id, message):
@@ -152,6 +158,26 @@ def estimate_download_size(profile_dir):
                 total_size += os.path.getsize(os.path.join(dirpath, filename))
     return total_size
 
+def get_file_creation_date(file_path):
+    return datetime.fromtimestamp(os.path.getctime(file_path))
+
+# Функция извлечения даты из имени файла
+def get_date_from_filename(file_name):
+    date_part = file_name.split('_')[0]
+    if re.match(r'\d{4}-\d{2}-\d{2}', date_part):
+        try:
+            return datetime.strptime(date_part, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+    return None
+
+
+def is_resolution_string(string):
+    parts = string.split('x')
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        return True
+    return False
+
 async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         media_group = []
@@ -164,27 +190,29 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
 
             uploaded_photo = await client.upload_file(file_path)
             media_group.append(InputMediaUploadedPhoto(file=uploaded_photo))
-            post_date = os.path.basename(file_path).split('_')[0]
+
+            file_name = os.path.basename(file_path)
+            post_date = get_date_from_filename(file_name)
+            if not post_date:
+                post_date = get_file_creation_date(file_path).strftime('%Y-%m-%d')
+            else:
+                post_date = post_date.strftime('%Y-%m-%d')
+
             captions.append(f"{i + 1}. {post_date}")
 
         if media_group:
-            caption = f"{tag} #photo\n" + "\n".join(captions)  # Добавляем тег #photo
+            caption = f"{tag} #photo\n" + "\n".join(captions)
             await client.send_file(chat_id, media_group, caption=caption)
 
             for file_path in photo_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
                 if delete_media_from_server:
-                    with open(file_path, 'w') as f:
-                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
+                    nullify_file(file_path)
 
             async with lock:
                 remaining_files_ref[0] -= len(photo_batch)
                 message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
-                await client(EditMessageRequest(
-                    peer=chat_id,
-                    id=pinned_message_id,
-                    message=message_content
-                ))
+                await client.edit_message(chat_id, pinned_message_id, message_content)
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process photo batch: {str(e)}")
@@ -193,7 +221,6 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
     try:
         media_group = []
         captions = []
-        attributes = []
         video_batch_size = 0
 
         for file_path in video_batch:
@@ -223,7 +250,13 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             )
 
             media_group.append(media)
-            post_date = os.path.basename(file_path).split('_')[0]
+            file_name = os.path.basename(file_path)
+            post_date = get_date_from_filename(file_name)
+            if not post_date:
+                post_date = get_file_creation_date(file_path).strftime('%Y-%m-%d')
+            else:
+                post_date = post_date.strftime('%Y-%m-%d')
+
             captions.append(f"{len(media_group)}. {post_date}")
             video_batch_size += file_size
 
@@ -233,8 +266,7 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
                 if delete_media_from_server:
-                    with open(file_path, 'w') as f:
-                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
+                    nullify_file(file_path)
 
                 # Удаление миниатюры
                 thumb_path = file_path.replace(".mp4", ".jpg")
@@ -252,7 +284,6 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
-
 
 
 
@@ -336,7 +367,13 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             uploaded_video = await client.upload_file(file_path)
             duration, width, height = get_video_metadata(file_path)
             thumb_path = create_thumbnail(file_path)
-            post_date = os.path.basename(file_path).split('_')[0]
+
+            file_name = os.path.basename(file_path)
+            post_date = get_date_from_filename(file_name)
+            if not post_date:
+                post_date = get_file_creation_date(file_path).strftime('%Y-%m-%d')
+            else:
+                post_date = post_date.strftime('%Y-%m-%d')
 
             attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
 
@@ -369,10 +406,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
                 return
 
             if delete_media_from_server:
-                os.remove(file_path)
-            else:
-                with open(file_path, 'w') as f:
-                    pass  # Open in write mode to make the file empty
+                nullify_file(file_path)
 
             os.remove(thumb_path)  # Remove thumbnail after sending
 
@@ -393,6 +427,8 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
         logger.error(f"Failed to process large file {file_path}: {str(e)}")
 
 
+
+
 async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
     if 'sent_files.txt' in file_path:
         return
@@ -406,7 +442,7 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
                 msg = await client.send_file(chat_id, file_path, caption=tag)
                 USER_MESSAGES.append(msg.id)  # Сохраняем ID сообщения в USER_MESSAGES, а не в TEXT_MESSAGES
                 if delete_media_from_server:
-                    os.remove(file_path)  # Удаляем файл
+                    nullify_file(file_path)  # Зануляем файл
                 break
             except FloodWaitError as e:
                 await handle_flood_wait(chat_id, e.seconds, client)
@@ -418,9 +454,10 @@ async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
         else:
             await aiogram_bot.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
 
+
+
 async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client, delete_media_from_server):
     try:
-        # get media type and data
         file_name = os.path.basename(file_path)
         sent_files = load_sent_files(profile_dir)
         if file_name in sent_files or file_name.startswith('bad-'):
@@ -437,7 +474,12 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
         else:
             media_type = 'file'
 
-        post_date = file_name.split('_')[0]
+        post_date = get_date_from_filename(file_name)
+        if not post_date:
+            post_date = get_file_creation_date(file_path).strftime('%Y-%m-%d')
+        else:
+            post_date = post_date.strftime('%Y-%m-%d')
+
         full_tag = f"{tag} #{media_type} {post_date}"
 
         if is_valid_file(file_path):
@@ -458,24 +500,19 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
         else:
             os.remove(file_path)
 
-        # decrease counter of remaining media files
         async with lock:
             remaining_files_ref[0] -= 1
             message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
-            await client(EditMessageRequest(
-                peer=chat_id,
-                id=pinned_message_id,
-                message=message_content
-            ))
+            await client.edit_message(chat_id, pinned_message_id, message_content)
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
 
 
+
 async def upload_with_semaphore(semaphore, process_file, *args):
     async with semaphore:
         await process_file(*args)
-
 
 
 async def send_existing_media(username, chat_id, tag, pinned_message_id, client):
@@ -496,6 +533,11 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
     sent_files = load_sent_files(profile_dir)
     new_files = [file for file in new_files if os.path.basename(file) not in sent_files]
     large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
+
+    if sort_by_date_not_by_size:
+        new_files = sort_files_by_date(new_files)
+    else:
+        new_files.sort(key=os.path.getsize)
 
     total_files = len(new_files)
 
@@ -574,6 +616,7 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(msg.id)
+
 
 
 
