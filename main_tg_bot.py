@@ -517,7 +517,7 @@ async def check_command(event):
         user_to_check = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else None
 
         if not user_to_check:
-            msg = await event.respond("Usage: /check <all / nickname / subscription number / non-null>")
+            msg = await event.respond("Usage: /check <all / nickname / subscription number / non-null / null>")
             TEXT_MESSAGES.append(msg.id)
             return
 
@@ -527,6 +527,7 @@ async def check_command(event):
 
         show_non_null = user_to_check == "non-null"
         show_all = user_to_check == "all"
+        show_null = user_to_check == "null"
 
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
@@ -560,12 +561,19 @@ async def check_command(event):
                 nonlocal total_media_size
                 total_media_size += total_size
 
-                if total_size > 0 or not show_non_null:
+                is_null = total_size == 0
+
+                if show_null:
+                    if is_null:
+                        indent = ' ' * (len(str(index)) + 2)
+                        return f"{index}. `{profile}` ({sent_files_count}/**{total_files}**)\n{indent}#{profile} - {total_size / (1024 * 1024):.2f} MB\n"
+                    return ""
+                elif total_size > 0 or not show_non_null:
                     indent = ' ' * (len(str(index)) + 2)
                     return f"{index}. `{profile}` ({sent_files_count}/**{total_files}**)\n{indent}#{profile} - {total_size / (1024 * 1024):.2f} MB\n"
             return ""
 
-        if show_all:
+        if show_all or show_null:
             for i, profile in enumerate(subscriptions, start=1):
                 response += generate_profile_report(profile, i)
         elif show_non_null:
@@ -616,6 +624,7 @@ async def check_command(event):
     except Exception as e:
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
+
 
 @client.on(events.NewMessage(pattern='/rm_sent_file$'))
 async def rm_sent_file_command_usage(event):
