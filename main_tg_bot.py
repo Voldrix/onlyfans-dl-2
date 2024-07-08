@@ -477,9 +477,17 @@ async def force_add_command(event):
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
 
+def get_media_files_size(directory):
+    total_size = 0
+    for dirpath, _, filenames in os.walk(directory):
+        for filename in filenames:
+            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')) and filename != 'sent_files.txt':
+                file_path = os.path.join(dirpath, filename)
+                total_size += os.path.getsize(file_path)
+    return total_size / (1024 * 1024)  # Возвращаем размер в мегабайтах
+    
 
-
-@client.on(events.NewMessage(pattern='/check$'))
+@client.on(events.NewMessage(pattern='/check(?: (.+))?$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
         msg = await event.respond("Unauthorized access.")
@@ -488,9 +496,19 @@ async def check_command(event):
         return
 
     try:
+        user_to_check = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else None
+
+        if not user_to_check:
+            msg = await event.respond("Usage: /check <all / nickname / subscription number / non-null>")
+            TEXT_MESSAGES.append(msg.id)
+            return
+
         header = "**__profile (sent/total)__**\n"
         separator = "--------------------------\n"
         response = header + separator
+
+        show_non_null = user_to_check == "non-null"
+        show_all = user_to_check == "all"
 
         with open("subscriptions_list.txt", "r") as f:
             subscriptions = f.readlines()
@@ -504,7 +522,9 @@ async def check_command(event):
 
         subscriptions += manual_subscriptions
 
-        for i, profile in enumerate(subscriptions, start=1):
+        total_media_size = 0
+
+        def generate_profile_report(profile, index):
             profile = profile.strip()
             profile_dir = os.path.join('.', profile)
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
@@ -517,7 +537,38 @@ async def check_command(event):
                             total_files += 1
                             if file in sent_files:
                                 actual_sent_files += 1
-                response += f"{i}. `{profile}` ({actual_sent_files}/**{total_files}**)\n    #{profile}\n"
+                media_size = get_media_files_size(profile_dir)
+                nonlocal total_media_size
+                total_media_size += media_size
+                if media_size > 0 or not show_non_null:
+                    indent = ' ' * (len(str(index)) + 2)
+                    return f"{index}. `{profile}` ({actual_sent_files}/**{total_files}**)\n{indent}#{profile} - {media_size:.2f} MB\n"
+            return ""
+
+        if show_all:
+            for i, profile in enumerate(subscriptions, start=1):
+                response += generate_profile_report(profile, i)
+        elif show_non_null:
+            for i, profile in enumerate(subscriptions, start=1):
+                response += generate_profile_report(profile, i)
+        else:
+            if user_to_check.isdigit():
+                user_index = int(user_to_check) - 1
+                if 0 <= user_index < len(subscriptions):
+                    response += generate_profile_report(subscriptions[user_index], user_index + 1)
+                else:
+                    response += f"Invalid index: {user_to_check}\n"
+            else:
+                for i, profile in enumerate(subscriptions, start=1):
+                    if profile.strip() == user_to_check:
+                        response += generate_profile_report(profile, i)
+                        break
+                else:
+                    response += f"User `{user_to_check}` not found.\n"
+
+        if show_all or show_non_null:
+            response += separator
+            response += f"**Total media size: {total_media_size:.2f} MB**"
 
         if response.strip() == header + separator:
             msg = await event.respond("No downloaded profiles found.")
@@ -532,6 +583,8 @@ async def check_command(event):
     except Exception as e:
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
+
+
 
 
 @client.on(events.NewMessage(pattern='/rm_sent_file$'))
@@ -915,7 +968,7 @@ async def setup_aiogram_bot_commands(dp: Dispatcher):
     commands = [
         {"command": "list", "description": "Show list of active subscriptions"},
         {"command": "load", "description": "Download media to server without sending"},
-        {"command": "check", "description": "Check downloaded profiles and media count"},
+        {"command": "check", "description": "Check media count for all (or for chosen profile)"},
         {"command": "get", "description": "Download media and send to this chat"},
         {"command": "get_big", "description": "Download and send large media files"},
         {"command": "clear", "description": "Clear non-media messages in chat"},
