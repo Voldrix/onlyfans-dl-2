@@ -194,28 +194,26 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
         media_group = []
         captions = []
         attributes = []
-        total_batch_size = 0
+        video_batch_size = 0
 
-        for i, file_path in enumerate(video_batch):
+        for file_path in video_batch:
             if not is_valid_file(file_path):
                 os.remove(file_path)
                 continue
 
             file_size = os.path.getsize(file_path)
-            if total_batch_size + file_size > TELEGRAM_FILE_SIZE_LIMIT:
+            if video_batch_size + file_size > 100 * 1024 * 1024:  # 100 MB
                 if media_group:
-                    caption = f"{tag} #video\n" + "\n".join(captions)
-                    await client.send_file(chat_id, file=media_group, caption=caption, supports_streaming=True)
-                    media_group.clear()
-                    captions.clear()
-                    total_batch_size = 0
+                    await client.send_file(chat_id, file=media_group, caption=f"{tag} #video\n" + "\n".join(captions), supports_streaming=True)
+                    media_group = []
+                    captions = []
+                    video_batch_size = 0
 
             uploaded_video = await client.upload_file(file_path)
             duration, width, height = get_video_metadata(file_path)
             thumb_path = create_thumbnail(file_path)
 
             attributes = [DocumentAttributeVideo(duration=duration, w=width, h=height, supports_streaming=True)]
-
             media = InputMediaUploadedDocument(
                 file=uploaded_video,
                 mime_type='video/mp4',
@@ -223,27 +221,28 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 thumb=await client.upload_file(thumb_path),
                 nosound_video=True
             )
+
             media_group.append(media)
             post_date = os.path.basename(file_path).split('_')[0]
             captions.append(f"{len(media_group)}. {post_date}")
-            total_batch_size += file_size
+            video_batch_size += file_size
 
         if media_group:
-            caption = f"{tag} #video\n" + "\n".join(captions)
-            await client.send_file(chat_id, file=media_group, caption=caption, supports_streaming=True)
+            await client.send_file(chat_id, file=media_group, caption=f"{tag} #video\n" + "\n".join(captions), supports_streaming=True)
 
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
                 if delete_media_from_server:
                     with open(file_path, 'w') as f:
-                        pass
+                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
 
+                # Удаление миниатюры
                 thumb_path = file_path.replace(".mp4", ".jpg")
                 if os.path.exists(thumb_path):
                     os.remove(thumb_path)
 
             async with lock:
-                remaining_files_ref[0] -= len(media_group)
+                remaining_files_ref[0] -= len(video_batch)
                 message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
                 await client(EditMessageRequest(
                     peer=chat_id,
@@ -542,18 +541,21 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
         for file_path in new_files:
             if file_path.endswith('mp4'):
                 file_size = os.path.getsize(file_path)
-                if video_batch_size + file_size > min(100 * 1024 * 1024, TELEGRAM_FILE_SIZE_LIMIT):
-                    await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                    video_batch = []
-                    video_batch_size = 0
+                if file_size > 100 * 1024 * 1024:  # Если файл больше 100 МБ, отправляем его отдельно
+                    await process_video_batch(profile_dir, [file_path], chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                else:
+                    if video_batch_size + file_size > 100 * 1024 * 1024:
+                        await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                        video_batch = []
+                        video_batch_size = 0
 
-                video_batch.append(file_path)
-                video_batch_size += file_size
+                    video_batch.append(file_path)
+                    video_batch_size += file_size
 
-                if len(video_batch) == 10:
-                    await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
-                    video_batch = []
-                    video_batch_size = 0
+                    if len(video_batch) == 10:
+                        await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                        video_batch = []
+                        video_batch_size = 0
 
         if video_batch:
             await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
@@ -572,6 +574,7 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(msg.id)
+
 
 
 
@@ -664,4 +667,3 @@ def total_files_estimated(profile_dir, max_age):
             if "Downloaded" in output and "new" in output:
                 total_files += int(output.split()[1])  # Пример: "Downloaded 3 new files" -> берем число 3
     return total_files
-
