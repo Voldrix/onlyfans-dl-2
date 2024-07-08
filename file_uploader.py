@@ -80,18 +80,19 @@ async def send_message_with_retry(chat_id, message):
             await asyncio.sleep(5)
 
 def load_sent_files(profile_dir):
-    sent_files = set()
     sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
-    if os.path.exists(sent_files_path):
-        with open(sent_files_path, 'r') as f:
-            for line in f:
-                sent_files.add(line.strip())
+    if not os.path.exists(sent_files_path):
+        return set()
+    with open(sent_files_path, 'r') as f:
+        sent_files = set(line.strip() for line in f if line.strip() and not line.startswith('sent_files.txt'))
     return sent_files
+
 
 def save_sent_file(profile_dir, file_name):
     sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
     with open(sent_files_path, 'a') as f:
         f.write(file_name + '\n')
+
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -161,7 +162,6 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 os.remove(file_path)
                 continue
 
-            # Загружаем фото на сервер Telegram и получаем объект InputPhoto
             uploaded_photo = await client.upload_file(file_path)
             media_group.append(InputMediaUploadedPhoto(file=uploaded_photo))
             post_date = os.path.basename(file_path).split('_')[0]
@@ -210,8 +210,8 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 file=uploaded_video,
                 mime_type='video/mp4',
                 attributes=attributes,
-                thumb=await client.upload_file(thumb_path),  # Загружаем и добавляем миниатюру
-                nosound_video=True  # Устанавливаем этот атрибут
+                thumb=await client.upload_file(thumb_path),
+                nosound_video=True
             )
             media_group.append(media)
             post_date = os.path.basename(file_path).split('_')[0]
@@ -243,6 +243,8 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except Exception as e:
         logger.error(f"Failed to process video batch: {str(e)}")
+
+
 
 
 
@@ -431,7 +433,19 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
         full_tag = f"{tag} #{media_type} {post_date}"
 
         if is_valid_file(file_path):
-            await send_file_and_replace_with_empty(chat_id, file_path, full_tag, client)
+            if file_name.endswith('mp4'):
+                thumb_path = create_thumbnail(file_path)
+                media = InputMediaUploadedDocument(
+                    file=await client.upload_file(file_path),
+                    mime_type='video/mp4',
+                    attributes=[DocumentAttributeVideo(duration=get_video_metadata(file_path)[0], w=1920, h=1080, supports_streaming=True)],
+                    thumb=await client.upload_file(thumb_path),
+                    nosound_video=True
+                )
+                msg = await client.send_file(chat_id, file=media, caption=full_tag, supports_streaming=True)
+                os.remove(thumb_path)  # Удаляем миниатюру после отправки
+            else:
+                await send_file_and_replace_with_empty(chat_id, file_path, full_tag, client)
             save_sent_file(profile_dir, file_name)
         else:
             os.remove(file_path)
@@ -448,6 +462,7 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
             LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
     except MessageNotModifiedError:
         pass
+
 
 async def upload_with_semaphore(semaphore, process_file, *args):
     async with semaphore:
@@ -599,3 +614,4 @@ def total_files_estimated(profile_dir, max_age):
             if "Downloaded" in output and "new" in output:
                 total_files += int(output.split()[1])  # Пример: "Downloaded 3 new files" -> берем число 3
     return total_files
+
