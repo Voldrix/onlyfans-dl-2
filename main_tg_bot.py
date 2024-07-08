@@ -7,12 +7,13 @@ import logging
 import requests
 import subprocess
 from PIL import Image
+from datetime import datetime
 from moviepy.editor import VideoFileClip
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import exceptions as aiogram_exceptions
 from telethon import TelegramClient, events
 from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
-from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
+from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest, GetHistoryRequest
 from config import *
 from file_uploader import process_video_batch, process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
@@ -22,6 +23,30 @@ from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot
 dp = Dispatcher(aiogram_bot)
 
 flood_wait_seconds = 0  # Добавляем глобальную переменную для отслеживания времени ожидания
+
+
+def get_file_creation_date(file_path):
+    return datetime.fromtimestamp(os.path.getctime(file_path))
+
+# Функция извлечения даты из имени файла
+def get_date_from_filename(file_name):
+    date_part = file_name.split('_')[0]
+    if re.match(r'\d{4}-\d{2}-\d{2}', date_part):
+        try:
+            return datetime.strptime(date_part, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+    return None
+
+def sort_files_by_date(files):
+    files_with_date = [file for file in files if get_date_from_filename(os.path.basename(file))]
+    files_without_date = [file for file in files if not get_date_from_filename(os.path.basename(file))]
+
+    files_with_date.sort(key=lambda x: get_date_from_filename(os.path.basename(x)) or get_file_creation_date(x))
+    files_without_date.sort(key=get_file_creation_date)
+
+    return files_with_date + files_without_date
+
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
@@ -82,8 +107,8 @@ async def get_command(event):
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
 
         if sort_by_date_not_by_size:
-            photo_files.sort(key=lambda x: os.path.basename(x).split('_')[0])  # Сортируем по дате из названия файла
-            video_files.sort(key=lambda x: os.path.basename(x).split('_')[0])
+            photo_files = sort_files_by_date(photo_files)
+            video_files = sort_files_by_date(video_files)
         else:
             photo_files.sort(key=os.path.getsize)
             video_files.sort(key=os.path.getsize)
@@ -183,6 +208,7 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 
 
@@ -487,6 +513,24 @@ def get_media_files_size(directory):
     return total_size / (1024 * 1024)  # Возвращаем размер в мегабайтах
     
 
+def get_folder_size(path):
+    """Calculate the size of a folder and the number of files within it."""
+    total_size = 0
+    total_files = 0
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.is_file() and not entry.name.endswith('.part'):
+                    total_size += entry.stat().st_size
+                    total_files += 1
+                elif entry.is_dir():
+                    dir_size, dir_files = get_folder_size(entry.path)
+                    total_size += dir_size
+                    total_files += dir_files
+    except Exception as e:
+        logger.error(f"Error accessing path {path}: {e}")
+    return total_size, total_files
+
 @client.on(events.NewMessage(pattern='/check(?: (.+))?$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -528,21 +572,25 @@ async def check_command(event):
             profile = profile.strip()
             profile_dir = os.path.join('.', profile)
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
-                sent_files = load_sent_files(profile_dir)
-                total_files = 0
-                actual_sent_files = 0
-                for root, _, files in os.walk(profile_dir):
-                    for file in files:
-                        if file != 'sent_files.txt' and file.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')):
-                            total_files += 1
-                            if file in sent_files:
-                                actual_sent_files += 1
-                media_size = get_media_files_size(profile_dir)
+                sent_files_count = 0
+                sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
+                if os.path.exists(sent_files_path):
+                    with open(sent_files_path, 'r') as sf:
+                        sent_files_count = sum(1 for _ in sf)
+
+                total_size, total_files = get_folder_size(profile_dir)
+                
+                # Учитываем sent_files.txt
+                if os.path.exists(sent_files_path):
+                    total_files -= 1
+                    total_size -= os.path.getsize(sent_files_path)
+
                 nonlocal total_media_size
-                total_media_size += media_size
-                if media_size > 0 or not show_non_null:
+                total_media_size += total_size
+
+                if total_size > 0 or not show_non_null:
                     indent = ' ' * (len(str(index)) + 2)
-                    return f"{index}. `{profile}` ({actual_sent_files}/**{total_files}**)\n{indent}#{profile} - {media_size:.2f} MB\n"
+                    return f"{index}. `{profile}` ({sent_files_count}/**{total_files}**)\n{indent}#{profile} - {total_size / (1024 * 1024):.2f} MB\n"
             return ""
 
         if show_all:
@@ -568,14 +616,28 @@ async def check_command(event):
 
         if show_all or show_non_null:
             response += separator
-            response += f"**Total media size: {total_media_size:.2f} MB**"
+            response += f"**Total media size: {total_media_size / (1024 * 1024):.2f} MB**"
 
         if response.strip() == header + separator:
             msg = await event.respond("No downloaded profiles found.")
             USER_MESSAGES.append(msg.id)
         else:
-            msg = await event.respond(response)
-            TEXT_MESSAGES.append(msg.id)
+            # Split the response into parts if it exceeds 4096 characters
+            max_length = 4096
+            response_lines = response.split('\n')
+            current_part = ""
+
+            for line in response_lines:
+                if len(current_part) + len(line) + 1 > max_length:
+                    msg = await event.respond(current_part)
+                    TEXT_MESSAGES.append(msg.id)
+                    current_part = line + "\n"
+                else:
+                    current_part += line + "\n"
+
+            if current_part:
+                msg = await event.respond(current_part)
+                TEXT_MESSAGES.append(msg.id)
     except FloodWaitError as e:
         await handle_flood_wait(event, e.seconds, client)
     except requests.exceptions.RequestException as e:
@@ -583,6 +645,10 @@ async def check_command(event):
     except Exception as e:
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
+
+
+
+
 
 
 
