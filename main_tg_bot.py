@@ -1,4 +1,3 @@
-# main_tg_bot.py
 import os
 import sys
 import time
@@ -18,12 +17,10 @@ from config import *
 from file_uploader import process_video_batch, process_photo_batch, save_sent_file, process_large_file, process_file, upload_with_semaphore, send_existing_media, send_existing_large_media, download_media_without_sending, handle_flood_wait, handle_too_many_requests, load_sent_files, send_message_with_retry, count_files, total_files_estimated, estimate_download_size
 from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, client, switch_bot_token, logger, processes, LAST_MESSAGE_CONTENT
 
-
 # Initialize aiogram bot
 dp = Dispatcher(aiogram_bot)
 
 flood_wait_seconds = 0  # Добавляем глобальную переменную для отслеживания времени ожидания
-
 
 def get_file_creation_date(file_path):
     return datetime.fromtimestamp(os.path.getctime(file_path))
@@ -46,7 +43,6 @@ def sort_files_by_date(files):
     files_without_date.sort(key=get_file_creation_date)
 
     return files_with_date + files_without_date
-
 
 @client.on(events.NewMessage(pattern='/get (.+)'))
 async def get_command(event):
@@ -96,7 +92,7 @@ async def get_command(event):
                 if not filename.endswith('.part') and os.path.getsize(file_path) > 0 and 'sent_files.txt' not in file_path:
                     if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
                         photo_files.append(file_path)
-                    elif file_path.endswith('mp4') and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                    elif file_path.endswith(('mp4', 'm4v')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:  # Добавлено 'm4v' здесь
                         video_files.append(file_path)
                     elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
                         large_files.append(file_path)
@@ -183,13 +179,12 @@ async def get_command(event):
 
             await asyncio.gather(*tasks)
 
-        # Отправка сообщений о больших файлах без занесения их в sent_files.txt
         for file_path in large_files:
             try:
                 file_name = os.path.basename(file_path)
                 file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
                 duration = "N/A"
-                if file_path.endswith('mp4'):
+                if file_path.endswith(('mp4', 'm4v')):  # Добавлено 'm4v' здесь
                     try:
                         video = VideoFileClip(file_path)
                         duration = video.duration
@@ -208,11 +203,6 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
-
-
-
-
 
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
@@ -264,7 +254,7 @@ async def get_big_command(event):
         large_files = [file for file in large_files if os.path.basename(file) not in sent_files]
 
         if sort_by_date_not_by_size:
-            large_files.sort(key=lambda x: os.path.basename(x).split('_')[0])  # Сортируем по дате из названия файла
+            large_files.sort(key=lambda x: os.path.basename(x).split('_')[0])
         else:
             large_files.sort(key=os.path.getsize)
 
@@ -279,13 +269,12 @@ async def get_big_command(event):
         lock = asyncio.Lock()
         remaining_files = [len(large_files)]
 
-        # Отправка больших файлов по одному
         for file_path in large_files:
             try:
                 await process_large_file(profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client)
             except Exception as e:
                 logger.error(f"Failed to process large file {file_path}: {str(e)}")
-                continue  # Пропускаем поврежденный файл
+                continue
 
         upload_complete_msg = await client.send_message(event.chat_id, f"Upload of large files complete. {tag}")
         TEXT_MESSAGES.append(upload_complete_msg.id)
@@ -296,9 +285,6 @@ async def get_big_command(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
-
-
-
 def send_fallback_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
     data = {
@@ -308,7 +294,6 @@ def send_fallback_message(chat_id, message):
     response = requests.post(url, data=data)
     if response.status_code != 200:
         logger.error(f"Failed to send fallback message: {response.text}")
-
 
 def run_script(args):
     process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -356,8 +341,6 @@ async def load_command_usage(event):
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-   
-
 
 @client.on(events.NewMessage(pattern='/load (.+)'))
 async def load_command(event):
@@ -414,8 +397,6 @@ async def load_command(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
-
-
 @client.on(events.NewMessage())
 async def track_user_messages(event):
     global flood_wait_seconds
@@ -426,11 +407,11 @@ async def track_user_messages(event):
                 msg = await event.respond(f"FloodWaitError: A wait of {flood_wait_seconds} seconds is required. Please use /switch to switch to another bot.")
                 USER_MESSAGES.append(msg.id)
             else:
-                if not event.message.media:  # Проверяем, что сообщение не содержит медиа
+                if not event.message.media:
                     USER_MESSAGES.append(event.id)
-                    TEXT_MESSAGES.append(event.id)  # Отслеживаем только текстовые сообщения
+                    TEXT_MESSAGES.append(event.id)
                 else:
-                    USER_MESSAGES.append(event.id)  # Отслеживаем все сообщения для удаления по команде /clear
+                    USER_MESSAGES.append(event.id)
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
@@ -457,7 +438,6 @@ async def force_add_command(event):
         target = event.pattern_match.group(1).strip()
         manual_subscriptions = set()
 
-        # Загрузка существующих подписок из subscriptions_list.txt
         existing_subscriptions = set()
         try:
             with open("subscriptions_list.txt", "r") as f:
@@ -465,7 +445,6 @@ async def force_add_command(event):
         except FileNotFoundError:
             pass
 
-        # Загрузка существующих подписок из subscriptions_manual.txt
         try:
             with open("subscriptions_manual.txt", "r") as f:
                 manual_subscriptions.update(line.strip() for line in f)
@@ -473,7 +452,6 @@ async def force_add_command(event):
             pass
 
         if target:
-            # Создание и заполнение sent_files.txt для указанного профиля
             profile_dir = target
             if os.path.exists(profile_dir) and os.path.isdir(profile_dir):
                 sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
@@ -487,7 +465,6 @@ async def force_add_command(event):
                 msg = await event.respond(f"Directory for user {target} not found.")
             TEXT_MESSAGES.append(msg.id)
         else:
-            # Заполнение файла subscriptions_manual.txt имеющимися папками
             for item in os.listdir('.'):
                 if os.path.isdir(item) and item not in ['BACKUP', '__pycache__', '.git']:
                     if item not in existing_subscriptions:
@@ -502,19 +479,16 @@ async def force_add_command(event):
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
 
-
 def get_media_files_size(directory):
     total_size = 0
     for dirpath, _, filenames in os.walk(directory):
         for filename in filenames:
-            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'mp3', 'gif')) and filename != 'sent_files.txt':
+            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'mp3', 'gif')) and filename != 'sent_files.txt':
                 file_path = os.path.join(dirpath, filename)
                 total_size += os.path.getsize(file_path)
-    return total_size / (1024 * 1024)  # Возвращаем размер в мегабайтах
-    
+    return total_size / (1024 * 1024)
 
 def get_folder_size(path):
-    """Calculate the size of a folder and the number of files within it."""
     total_size = 0
     total_files = 0
     try:
@@ -579,8 +553,6 @@ async def check_command(event):
                         sent_files_count = sum(1 for _ in sf)
 
                 total_size, total_files = get_folder_size(profile_dir)
-                
-                # Учитываем sent_files.txt
                 if os.path.exists(sent_files_path):
                     total_files -= 1
                     total_size -= os.path.getsize(sent_files_path)
@@ -622,7 +594,6 @@ async def check_command(event):
             msg = await event.respond("No downloaded profiles found.")
             USER_MESSAGES.append(msg.id)
         else:
-            # Split the response into parts if it exceeds 4096 characters
             max_length = 4096
             response_lines = response.split('\n')
             current_part = ""
@@ -646,13 +617,6 @@ async def check_command(event):
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
 
-
-
-
-
-
-
-
 @client.on(events.NewMessage(pattern='/rm_sent_file$'))
 async def rm_sent_file_command_usage(event):
     try:
@@ -661,7 +625,6 @@ async def rm_sent_file_command_usage(event):
             TEXT_MESSAGES.append(msg.id)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
 
 @client.on(events.NewMessage(pattern='/rm_sent_file (.+)'))
 async def rm_sent_file_command(event):
@@ -721,12 +684,11 @@ async def null_command_usage(event):
 async def nullify_files_in_directory(directory):
     for dirpath, _, filenames in os.walk(directory):
         for filename in filenames:
-            if filename != 'sent_files.txt':  # Проверяем, что это не sent_files.txt
+            if filename != 'sent_files.txt':
                 file_path = os.path.join(dirpath, filename)
                 if os.path.getsize(file_path) > 0:
                     with open(file_path, 'w') as f:
-                        pass  # Открываем в режиме записи, чтобы сделать файл пустым
-
+                        pass
 
 @client.on(events.NewMessage(pattern='/null (.+)'))
 async def null_command(event):
@@ -761,7 +723,6 @@ async def null_command(event):
         USER_MESSAGES.append(msg.id)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
 
 @client.on(events.NewMessage(pattern='/erase$'))
 async def erase_command_usage(event):
@@ -825,8 +786,6 @@ async def erase_command(event):
         msg = await event.respond(f"No messages with tag #{username} found.")
         USER_MESSAGES.append(msg.id)
 
-
-
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
     if event.sender_id == TELEGRAM_USER_ID:
@@ -865,7 +824,6 @@ async def del_command(event):
         TEXT_MESSAGES.append(msg.id)
         return
 
-    # delete user folder from server
     if os.path.exists(username):
         subprocess.call(['rm', '-rf', username])
         msg = await event.respond(f"User directory {username} has been deleted. {tag}")
@@ -880,26 +838,22 @@ async def clear_command(event):
         if event.sender_id == TELEGRAM_USER_ID:
             messages_to_delete = []
 
-            # Добавляем идентификатор, чтобы удалить это сообщение
             messages_to_delete.append(event.id)
 
-            # Удаляем только текстовые сообщения, отслеживаемые в TEXT_MESSAGES и USER_MESSAGES
             for msg_id in TEXT_MESSAGES + USER_MESSAGES:
                 try:
                     message = await client.get_messages(event.chat_id, ids=msg_id)
-                    if message and not message.media:  # Удаляем только текстовые сообщения
+                    if message and not message.media:
                         messages_to_delete.append(msg_id)
                 except:
                     continue
 
-            # Удаляем отслеживаемые сообщения
             await client.delete_messages(event.chat_id, messages_to_delete)
 
-            # Очищаем отслеживаемые ID сообщений
             TEXT_MESSAGES.clear()
             USER_MESSAGES.clear()
             global last_flood_wait_message_time
-            last_flood_wait_message_time = None  # Сбрасываем таймер FloodWaitError
+            last_flood_wait_message_time = None
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
@@ -911,7 +865,7 @@ async def switch_command(event):
     try:
         if event.sender_id == TELEGRAM_USER_ID:
             switch_bot_token()
-            flood_wait_seconds = 0  # Сброс времени ожидания после переключения
+            flood_wait_seconds = 0
             await event.respond("Switched to the next bot token.")
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
@@ -924,7 +878,6 @@ async def restart_command(event):
             os.execv(sys.executable, ['python3'] + sys.argv)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
 
 @client.on(events.NewMessage(pattern='/list'))
 async def list_command(event):
@@ -946,7 +899,6 @@ async def list_command(event):
                 msg = await event.respond("No active subscriptions found.")
                 TEXT_MESSAGES.append(msg.id)
                 return
-            # print subscription list with numbers and markdown format
             markdown_subs = ''.join([f"{i+1}. `{sub.strip()}`\n" for i, sub in enumerate(subscriptions)])
             msg = await event.respond(markdown_subs, parse_mode='md')
             TEXT_MESSAGES.append(msg.id)
@@ -1052,8 +1004,6 @@ async def setup_aiogram_bot_commands(dp: Dispatcher):
 
     await dp.bot.set_my_commands(commands)
 
-
-
 async def on_startup(dp):
     await setup_aiogram_bot_commands(dp)
 
@@ -1065,5 +1015,3 @@ def main():
 if __name__ == '__main__':
     from aiogram import executor
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
-
-
