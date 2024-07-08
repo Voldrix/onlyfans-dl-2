@@ -126,21 +126,21 @@ To use with Telegram Bot:
 
 ## Description of Telegram Bot Commands
 * `/list`: Show the list of active subscriptions.
-* `/load`: Download media files to the server without sending to the chat.
+* `/load`: Download media files to the server without sending.
 * `/check`: Check media count for all (or for chosen profile).
-* `/get`: Download media files and send them to this chat.
-* `/get_big`: Download and send large media files.
+* `/get`: Upload media files to this chat.
+* `/get_big`: Upload 2GB+ media files to this chat.
 * `/clear`: Clear the chat of non-media messages.
-* `/del`: Delete the profile folder from the server.
-* `/switch`: Switch to the next bot token.
+* `/del`: Delete chosen profile folder from server.
+* `/switch`: Switch to next bot token (handle FloodWaitError).
 * `/restart`: Stop the current process and restart the bot.
 * `/user_id`: Update USER_ID.
 * `/user_agent`: Update USER_AGENT.
 * `/x_bc`: Update X_BC.
 * `/sess_cookie`: Update SESS_COOKIE.
-* `/erase`: Erase chat messages with a specific hashtag.
+* `/erase`: Erase text / media files with a specific hashtag.
 * `/force_add`: Force add subscription in /check and fill sent_files.txt for username (optional).
-* `/rm_sent_file`: Remove sent_files.txt for a user.
+* `/rm_sent_file`: Remove sent_files.txt for a chosen user.
   
 **Notes**: Telegram API not allow fast messeage flood, so telegram bot can't send all files at once. If you see message "FloodWaitError: A wait of XXX seconds is required." - just use `/switch` to switch to your second BotFather bot.
 
