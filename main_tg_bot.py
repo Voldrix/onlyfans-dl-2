@@ -979,7 +979,7 @@ async def setup_aiogram_bot_commands(dp: Dispatcher):
         {"command": "user_agent", "description": "Update USER_AGENT"},
         {"command": "x_bc", "description": "Update X_BC"},
         {"command": "sess_cookie", "description": "Update SESS_COOKIE"},
-        {"command": "erase", "description": "Erase text/media files with a specific hashtag"},
+        {"command": "erase", "description": "Erase text / media files with a specific hashtag"},
         {"command": "force_add", "description": "Force add subscription in /check and fill sent_files.txt for username (optional)"},
         {"command": "rm_sent_file", "description": "Remove sent_files.txt for a chosen user"}
     ]
