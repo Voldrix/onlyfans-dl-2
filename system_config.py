@@ -17,7 +17,7 @@ ByPass = ['']
 ALBUMS = False #True
 
 # Use content type subfolders (messages/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
-USE_SUB_FOLDERS = False #True
+USE_SUB_FOLDERS = True #False
 
 # Content types to download
 VIDEOS = True #False
@@ -37,12 +37,11 @@ MAX_PARALLEL_DOWNLOADS = 400
 MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
-delete_media_from_server = True  #False
+delete_media_from_server = False  #True
 
 # Merge media files into albums
 merge_media_to_album = True  # or False
 
 # Sort media by date instead of size
 sort_by_date_not_by_size = True  # or False
-
 
