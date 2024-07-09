@@ -1,3 +1,5 @@
+#main_tg_bot.py
+
 import os
 import sys
 import time
@@ -25,7 +27,6 @@ flood_wait_seconds = 0  # Добавляем глобальную перемен
 def get_file_creation_date(file_path):
     return datetime.fromtimestamp(os.path.getctime(file_path))
 
-# Функция извлечения даты из имени файла
 def get_date_from_filename(file_name):
     date_part = file_name.split('_')[0]
     if re.match(r'\d{4}-\d{2}-\d{2}', date_part):
@@ -176,11 +177,11 @@ async def get_command(event):
                     current_batch_size += file_size
                     tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client, delete_media_from_server))
                 else:
-                    await asyncio.gather(*tasks)
+                    await asyncio.gather(*tasks, return_exceptions=True)
                     tasks = [upload_with_semaphore(semaphore, process_file, profile_dir, file_path, event.chat_id, tag, pinned_message_id, remaining_files, lock, client, delete_media_from_server)]
                     current_batch_size = file_size
 
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         for file_path in large_files:
             try:
@@ -191,7 +192,8 @@ async def get_command(event):
                     try:
                         video = VideoFileClip(file_path)
                         duration = video.duration
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"Error reading video metadata for {file_path}: {e}")
                         continue  # Пропускаем поврежденный файл
                 msg = await client.send_message(event.chat_id, f"Large file detected: {file_name}\nSize: {file_size_mb:.2f} MB\nDuration: {duration} seconds\nUse /get_big to download.")
                 TEXT_MESSAGES.append(msg.id)
@@ -205,7 +207,9 @@ async def get_command(event):
     except requests.exceptions.RequestException as e:
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        logger.error(f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/get_big (.+)'))
 async def get_big_command(event):
@@ -512,6 +516,15 @@ def get_folder_size(path):
         logger.error(f"Error accessing path {path}: {e}")
     return total_size, total_files
 
+@client.on(events.NewMessage(pattern='/check$'))
+async def check_command_usage(event):
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /check <all / null / non-null / username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 @client.on(events.NewMessage(pattern='/check(?: (.+))?$'))
 async def check_command(event):
     if event.sender_id != TELEGRAM_USER_ID:
@@ -521,11 +534,10 @@ async def check_command(event):
         return
 
     try:
-        user_to_check = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else None
+        user_to_check = event.pattern_match.group(1).strip() if event.pattern_match.group(1) else "all"
 
         if not user_to_check:
-            msg = await event.respond("Usage: /check <all / nickname / subscription number / non-null / null>")
-            TEXT_MESSAGES.append(msg.id)
+            await check_command_usage(event)
             return
 
         header = "**__profile (sent/total)__**\n"
@@ -631,7 +643,6 @@ async def check_command(event):
     except Exception as e:
         logger.error(f"Error checking profiles: {str(e)}")
         send_fallback_message(event.chat_id, "Error checking profiles.")
-
 
 @client.on(events.NewMessage(pattern='/rm_sent_file$'))
 async def rm_sent_file_command_usage(event):
@@ -916,9 +927,25 @@ async def list_command(event):
                 msg = await event.respond("No active subscriptions found.")
                 TEXT_MESSAGES.append(msg.id)
                 return
+
             markdown_subs = ''.join([f"{i+1}. `{sub.strip()}`\n" for i, sub in enumerate(subscriptions)])
-            msg = await event.respond(markdown_subs, parse_mode='md')
-            TEXT_MESSAGES.append(msg.id)
+            response = markdown_subs
+
+            max_length = 4096
+            response_lines = response.split('\n')
+            current_part = ""
+
+            for line in response_lines:
+                if len(current_part) + len(line) + 1 > max_length:
+                    msg = await event.respond(current_part)
+                    TEXT_MESSAGES.append(msg.id)
+                    current_part = line + "\n"
+                else:
+                    current_part += line + "\n"
+
+            if current_part:
+                msg = await event.respond(current_part)
+                TEXT_MESSAGES.append(msg.id)
     except FileNotFoundError:
         msg = await event.respond("Error: subscriptions_list.txt not found.")
         TEXT_MESSAGES.append(msg.id)
@@ -926,6 +953,7 @@ async def list_command(event):
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
         send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+
 
 @client.on(events.NewMessage(pattern='/user_id$'))
 async def user_id_command_usage(event):
