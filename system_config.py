@@ -1,5 +1,8 @@
 # system_config.py
 
+# Maximum count of onlyfans profiles to list
+POSTS_LIMIT = 100
+
 # 0 = do not print file names or api calls
 # 1 = print filenames only when max_age is set
 # 2 = always print filenames
@@ -17,7 +20,7 @@ ByPass = ['']
 ALBUMS = False #True
 
 # Use content type subfolders (messages/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
-USE_SUB_FOLDERS = True #False
+USE_SUB_FOLDERS = False #True
 
 # Content types to download
 VIDEOS = True #False
@@ -30,18 +33,17 @@ ARCHIVED = True #False
 PURCHASED = True #False
 
 # Size of disk space buffer you want to use on your server for temporary media saving
-CACHE_SIZE_LIMIT = 25000 * 1024 * 1024
+CACHE_SIZE_LIMIT = 75000 * 1024 * 1024
 
 # Maximum count of parallel downloads from OnlyFans site and uploads to telegram (do not change it if no need)
 MAX_PARALLEL_DOWNLOADS = 400 
 MAX_PARALLEL_UPLOADS = 100
 
 # Keep or Delete media files on server after posting in Telegram
-delete_media_from_server = False  #True
+delete_media_from_server = False
 
 # Merge media files into albums
 merge_media_to_album = True  # or False
 
 # Sort media by date instead of size
 sort_by_date_not_by_size = True  # or False
-
