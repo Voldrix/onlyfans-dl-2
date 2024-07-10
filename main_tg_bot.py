@@ -41,10 +41,8 @@ async def get_command_usage(event):
         if event.sender_id == TELEGRAM_USER_ID:
             msg = await event.respond("Usage: /get <username or subscription number>")
             TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/get_big$'))
@@ -53,10 +51,8 @@ async def get_big_command_usage(event):
         if event.sender_id == TELEGRAM_USER_ID:
             msg = await event.respond("Usage: /get_big <username or subscription number>")
             TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/load$'))
@@ -65,10 +61,8 @@ async def load_command_usage(event):
         if event.sender_id == TELEGRAM_USER_ID:
             msg = await event.respond("Usage: /load <username or subscription number> <max_age (optional)>")
             TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/force_add$'))
@@ -78,7 +72,7 @@ async def force_add_command_usage(event):
             msg = await event.respond("Usage: /force_add <username (optional)>")
             TEXT_MESSAGES.append(msg.id)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
         
         
 @client.on(events.NewMessage(pattern='/rm_sent_file$'))
@@ -88,7 +82,7 @@ async def rm_sent_file_command_usage(event):
             msg = await event.respond("Usage: /rm_sent_file <username or subscription number>")
             TEXT_MESSAGES.append(msg.id)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
         
         
 @client.on(events.NewMessage(pattern='/null$'))
@@ -97,45 +91,58 @@ async def null_command_usage(event):
         if event.sender_id == TELEGRAM_USER_ID:
             msg = await event.respond("Usage: /null <username or subscription number>")
             TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
        
 @client.on(events.NewMessage(pattern='/del$'))
 async def del_command_usage(event):
-    if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /del <username or subscription number>")
-        TEXT_MESSAGES.append(msg.id)
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /del <username or subscription number>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
         
         
 @client.on(events.NewMessage(pattern='/user_id$'))
 async def user_id_command_usage(event):
-    if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /user_id <new_user_id>")
-        TEXT_MESSAGES.append(msg.id)
-
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /user_id <new_user_id>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
+        
 
 @client.on(events.NewMessage(pattern='/user_agent$'))
 async def user_agent_command_usage(event):
-    if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /user_agent <new_user_agent>")
-        TEXT_MESSAGES.append(msg.id)
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /user_agent <new_user_agent>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
         
         
 @client.on(events.NewMessage(pattern='/x_bc$'))
 async def x_bc_command_usage(event):
-    if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /x_bc <new_x_bc>")
-        TEXT_MESSAGES.append(msg.id)
-
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /x_bc <new_x_bc>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
+        
 
 @client.on(events.NewMessage(pattern='/sess_cookie$'))
 async def sess_cookie_command_usage(event):
-    if event.sender_id == TELEGRAM_USER_ID:
-        msg = await event.respond("Usage: /sess_cookie <new_sess_cookie>")
-        TEXT_MESSAGES.append(msg.id)
+    try:
+        if event.sender_id == TELEGRAM_USER_ID:
+            msg = await event.respond("Usage: /sess_cookie <new_sess_cookie>")
+            TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
         
         
 #=============================================
@@ -323,7 +330,7 @@ async def get_command(event):
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
         logger.error(f"Unexpected error occurred: {str(e)}")
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
         # Учет медиа сообщений
         for msg_id in TEXT_MESSAGES:
@@ -422,7 +429,7 @@ async def get_big_command(event):
     except requests.exceptions.RequestException as e:
         await handle_too_many_requests(event.chat_id, e, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
         # Учет медиа сообщений
         for msg_id in TEXT_MESSAGES:
@@ -503,7 +510,6 @@ async def load_command(event):
 
 
 
-
 @client.on(events.NewMessage(pattern='/force_add(.*)'))
 async def force_add_command(event):
     try:
@@ -558,7 +564,7 @@ async def force_add_command(event):
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        await send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/check(?: (.+))?$'))
@@ -576,7 +582,9 @@ async def check_command(event):
             msg = await event.respond("Usage: /check <all / nickname / subscription number / non-null / null>")
             TEXT_MESSAGES.append(msg.id)
             return
-
+    except Exception as e:
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
+        
         header = "**__profile (sent/total)__**\n"
         separator = "--------------------------\n"
         response = header + separator
@@ -726,7 +734,7 @@ async def rm_sent_file_command(event):
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        await send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/null (.+)'))
@@ -761,7 +769,7 @@ async def null_command(event):
         msg = await event.respond(f"All media files in the directory for user {username} have been nullified.")
         USER_MESSAGES.append(msg.id)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/del (.+)'))
@@ -809,7 +817,7 @@ async def del_command(event):
     except requests.exceptions.RequestException as e:
         await handle_too_many_requests(event.chat_id, e.response, client)
     except Exception as e:
-        await send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/clear'))
@@ -835,7 +843,7 @@ async def clear_command(event):
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/switch$'))
@@ -847,17 +855,17 @@ async def switch_command(event):
             flood_wait_seconds = 0
             await event.respond("Switched to the next bot token.")
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/restart'))
 async def restart_command(event):
     try:
         if event.sender_id == TELEGRAM_USER_ID:
-            await event.respond("Telegram bot is restarting.")
             os.execv(sys.executable, ['python3'] + sys.argv)
+            await event.respond("Telegram bot is restarting.")
     except Exception as e:
-        await send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 @client.on(events.NewMessage(pattern='/list'))
@@ -902,11 +910,8 @@ async def list_command(event):
     except FileNotFoundError:
         msg = await event.respond("Error: subscriptions_list.txt not found.")
         TEXT_MESSAGES.append(msg.id)
-    except FloodWaitError as e:
-        await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        await send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
-
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
        
 
 @client.on(events.NewMessage(pattern='/user_id (.+)'))
@@ -1001,7 +1006,7 @@ async def track_user_messages(event):
     except FloodWaitError as e:
         await handle_flood_wait(event.chat_id, e.seconds, client)
     except Exception as e:
-        send_fallback_message(event.chat_id, f"Unexpected error occurred: {str(e)}")
+        await send_fallback_message(event.chat_id, rf"FloodWaitError: {str(e)}. Use command /switch to change bot.")
 
 
 def get_media_files_size(directory):
