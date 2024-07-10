@@ -1,9 +1,10 @@
 # config.py
-#==========================================#
+
+# ==========================================#
 # ↓↓↓↓↓↓↓↓↓↓↓↓ DO NOT TOUCH IT ↓↓↓↓↓↓↓↓↓↓↓↓#
-#==========================================#
+# ==========================================#
 import re
-import logging
+
 from user_config import *
 from system_config import *
 
@@ -15,6 +16,7 @@ TELEGRAM_FILE_SIZE_LIMIT = 2000 * 1024 * 1024
 
 # Current active bot index (do not change it)
 current_bot_index = 0
+
 
 # Verify length and format of cookie's values and update user_config.py
 def update_config(key, value):
@@ -28,7 +30,7 @@ def update_config(key, value):
         if not re.match(r'^[a-f0-9]{32,48}$', value):
             raise ValueError("Invalid X_BC format")
     elif key == "SESS_COOKIE":
-        if not re.match(r'^[a-zA-Z0-9]{16,32}$', value): 
+        if not re.match(r'^[a-zA-Z0-9]{16,32}$', value):
             raise ValueError("Invalid SESS_COOKIE format")
 
     # Load current config
@@ -44,6 +46,6 @@ def update_config(key, value):
 
     # Update global variable
     globals()[key] = value
-#==========================================#
+# ==========================================#
 # ↑↑↑↑↑↑↑↑↑↑↑↑ DO NOT TOUCH IT ↑↑↑↑↑↑↑↑↑↑↑↑#
-#==========================================#
+# ==========================================#
