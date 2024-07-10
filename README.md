@@ -138,7 +138,6 @@ To use with Telegram Bot:
 * `/user_agent`: Update USER_AGENT.
 * `/x_bc`: Update X_BC.
 * `/sess_cookie`: Update SESS_COOKIE.
-* `/erase`: Erase text / media files with a specific hashtag.
 * `/force_add`: Force add subscription in /check and fill sent_files.txt for username (optional).
 * `/rm_sent_file`: Remove sent_files.txt for a chosen user.
   
