@@ -143,6 +143,26 @@ async def handle_flood_wait(chat_id, wait_time, client):
         await send_fallback_message(chat_id, f"Error handling FloodWait: {str(e)}")
 
 
+async def send_message_with_retry(chat_id, message):
+    attempts = 0
+    while attempts < 5:
+        try:
+            msg = await aiogram_bot.send_message(chat_id, message)
+            TEXT_MESSAGES.append(msg.message_id)
+            break
+        except aiogram_exceptions.RetryAfter as e:
+            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
+            await asyncio.sleep(e.timeout)
+            attempts += 1
+        except FloodWaitError as e:
+            await handle_flood_wait(chat_id, e.seconds, client)
+            attempts += 1
+        except (asyncio.exceptions.TimeoutError, aiohttp.ClientError, aiogram_exceptions.TelegramAPIError) as e:
+            logger.exception(f"Target [ID:{chat_id}]: failed on attempt {attempts + 1} - {str(e)}")
+            attempts += 1
+            await asyncio.sleep(5)
+
+
 async def handle_too_many_requests(chat_id, response, client):
     retry_after = response.json().get("parameters", {}).get("retry_after", 60)
     message = f"Too Many Requests: retry after {retry_after} seconds. Please use /switch to switch to another bot."
@@ -156,26 +176,6 @@ async def handle_too_many_requests(chat_id, response, client):
         await send_fallback_message(chat_id, f"Error handling Too Many Requests: {str(e)}")
         
         
-async def send_message_with_retry(chat_id, message):
-    attempts = 0
-    while attempts < 5:
-        try:
-            msg = await aiogram_bot.send_message(chat_id, message)
-            TEXT_MESSAGES.append(msg.message_id)
-            break
-        except aiogram_exceptions.RetryAfter as e:
-            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
-            await asyncio.sleep(e.timeout)
-            attempts += 1
-        except FloodWaitError as e:
-            await asyncio.sleep(e.seconds)
-            attempts += 1
-        except (asyncio.exceptions.TimeoutError, aiohttp.ClientError, aiogram_exceptions.TelegramAPIError) as e:
-            logger.exception(f"Target [ID:{chat_id}]: failed on attempt {attempts + 1} - {str(e)}")
-            attempts += 1
-            await asyncio.sleep(5)
-
-
 def load_sent_files(profile_dir):
     sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
     if not os.path.exists(sent_files_path):
@@ -346,6 +346,8 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 post_date = post_date.strftime('%Y-%m-%d')
 
             captions.append(f"{i + 1}. {post_date}")
+        except FloodWaitError as e:
+            await handle_flood_wait(chat_id, e.seconds, client)  # Добавлено ожидание при FloodWaitError
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {str(e)}")
             continue
@@ -371,6 +373,8 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
                 message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
                 await client.edit_message(chat_id, pinned_message_id, message_content)
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+        except FloodWaitError as e:
+            await handle_flood_wait(chat_id, e.seconds, client)  # Добавлено ожидание при FloodWaitError
         except Exception as e:
             logger.error(f"Failed to send photo batch: {str(e)}")
     else:
@@ -424,6 +428,8 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
 
             captions.append(f"{len(media_group)}. {post_date}")
             video_batch_size += file_size
+        except FloodWaitError as e:
+            await handle_flood_wait(chat_id, e.seconds, client)  # Добавлено ожидание при FloodWaitError
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {str(e)}")
             continue
@@ -450,6 +456,8 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
                 message_content = f"Remaining files to send: {remaining_files_ref[0]}. {tag}"
                 await client.edit_message(chat_id, pinned_message_id, message_content)
                 LAST_MESSAGE_CONTENT[pinned_message_id] = message_content
+        except FloodWaitError as e:
+            await handle_flood_wait(chat_id, e.seconds, client)  # Добавлено ожидание при FloodWaitError
         except Exception as e:
             logger.error(f"Failed to send video batch: {str(e)}")
     else:
