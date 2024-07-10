@@ -1,23 +1,43 @@
-import os
-import re
-import math
-import time
+# file_uploader.py
+
+#=============================================
+#  IMPORTS and GLOBALS
+#=============================================
+
 import asyncio
-import requests
+import math
+import os
 import subprocess
-import logging
-from PIL import Image
 from datetime import datetime
-from moviepy.editor import VideoFileClip
-from telethon.tl.types import InputFile, InputPhoto, InputMediaUploadedPhoto, InputMediaDocument, InputMediaUploadedDocument, DocumentAttributeVideo
-from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
-from telethon.tl.functions.messages import UpdatePinnedMessageRequest, EditMessageRequest, DeleteMessagesRequest
-from config import *
-from aiogram import types
+
+import aiohttp
+import requests
+from PIL import Image
 from aiogram.utils import exceptions as aiogram_exceptions
-from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, switch_bot_token, logger, LAST_MESSAGE_CONTENT, processes
+from moviepy.editor import VideoFileClip
+from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
+from telethon.tl.functions.messages import EditMessageRequest
+from telethon.tl.types import InputMediaUploadedPhoto, InputMediaUploadedDocument, DocumentAttributeVideo
+
+from config import *
+from shared import aiogram_bot, TEXT_MESSAGES, USER_MESSAGES, MEDIA_MESSAGES, logger, LAST_MESSAGE_CONTENT, processes
+
 
 last_flood_wait_message_time = None
+
+#=============================================
+# additional functions (small)
+#=============================================
+
+def sort_files_by_date(files):
+    files_with_date = [file for file in files if get_date_from_filename(os.path.basename(file))]
+    files_without_date = [file for file in files if not get_date_from_filename(os.path.basename(file))]
+
+    files_with_date.sort(key=lambda x: get_date_from_filename(os.path.basename(x)) or get_file_creation_date(x))
+    files_without_date.sort(key=get_file_creation_date)
+
+    return files_with_date + files_without_date
+
 
 def is_valid_file(file_path):
     try:
@@ -48,6 +68,263 @@ def is_valid_file(file_path):
         logger.error(f"Unexpected error for file {file_path}: {e}")
         return False
 
+
+class FloodWait:
+    def __init__(self):
+        self.seconds = None
+
+    pass
+    
+    
+def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
+    global current_split_process
+    command = [
+        'ffmpeg', '-y', '-i', input_file,
+        '-ss', str(start_time), '-t', str(duration),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', output_file
+    ]
+    current_split_process = subprocess.Popen(command)
+    current_split_process.wait()    
+
+
+def get_video_metadata(file_path):
+    try:
+        video = VideoFileClip(file_path)
+        duration = int(video.duration)
+        width, height = video.size
+        return duration, width, height
+    except Exception as e:
+        logger.error(f"Error getting video metadata for {file_path}: {e}")
+        return None, None, None
+
+
+def create_thumbnail(file_path):
+    try:
+        video = VideoFileClip(file_path)
+        thumb_path = file_path.replace(".mp4", ".jpg").replace(".m4v", ".jpg").replace(".MOV", ".jpg").replace(".webm",
+                                                                                                               ".jpg")
+        video.save_frame(thumb_path, t=1.0)
+        return thumb_path
+    except Exception as e:
+        logger.error(f"Error creating thumbnail for {file_path}: {e}")
+        return None
+
+
+def nullify_file(file_path):
+    with open(file_path, 'w'):
+        pass
+
+async def send_fallback_message(chat_id, message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, data=data) as response:
+            if response.status != 200:
+                logger.error(f"Failed to send fallback message: {await response.text()}")
+            else:
+                msg = await response.json()
+                TEXT_MESSAGES.append(msg["result"]["message_id"])
+                if "media" in msg["result"]:
+                    MEDIA_MESSAGES.append(msg["result"]["message_id"])
+
+
+async def handle_flood_wait(chat_id, wait_time, client):
+    message = f"FloodWaitError: A wait of {wait_time} seconds is required. Please use /switch to switch to another bot."
+    try:
+        msg = await client.send_message(chat_id, message)
+        TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await asyncio.sleep(e.seconds)
+        await send_fallback_message(chat_id, message)
+    except Exception as e:
+        await send_fallback_message(chat_id, f"Error handling FloodWait: {str(e)}")
+
+
+async def handle_too_many_requests(chat_id, response, client):
+    retry_after = response.json().get("parameters", {}).get("retry_after", 60)
+    message = f"Too Many Requests: retry after {retry_after} seconds. Please use /switch to switch to another bot."
+    try:
+        msg = await client.send_message(chat_id, message)
+        TEXT_MESSAGES.append(msg.id)
+    except FloodWaitError as e:
+        await asyncio.sleep(e.seconds)
+        await send_fallback_message(chat_id, message)
+    except Exception as e:
+        await send_fallback_message(chat_id, f"Error handling Too Many Requests: {str(e)}")
+        
+        
+async def send_message_with_retry(chat_id, message):
+    attempts = 0
+    while attempts < 5:
+        try:
+            msg = await aiogram_bot.send_message(chat_id, message)
+            TEXT_MESSAGES.append(msg.message_id)
+            break
+        except aiogram_exceptions.RetryAfter as e:
+            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
+            await asyncio.sleep(e.timeout)
+            attempts += 1
+        except FloodWaitError as e:
+            await asyncio.sleep(e.seconds)
+            attempts += 1
+        except (asyncio.exceptions.TimeoutError, aiohttp.ClientError, aiogram_exceptions.TelegramAPIError) as e:
+            logger.exception(f"Target [ID:{chat_id}]: failed on attempt {attempts + 1} - {str(e)}")
+            attempts += 1
+            await asyncio.sleep(5)
+
+
+def load_sent_files(profile_dir):
+    sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
+    if not os.path.exists(sent_files_path):
+        return set()
+    with open(sent_files_path, 'r') as f:
+        sent_files = set(line.strip() for line in f if line.strip() and not line.startswith('sent_files.txt'))
+    return sent_files
+
+
+def save_sent_file(profile_dir, file_name):
+    sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
+    with open(sent_files_path, 'a') as f:
+        f.write(file_name + '\n')
+
+
+def run_script(args):
+    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True)
+    stdout, stderr = [], []
+    for line in iter(process.stdout.readline, ''):
+        logger.info(line.strip())
+        stdout.append(line.strip())
+    for line in iter(process.stderr.readline, ''):
+        logger.error(line.strip())
+        stderr.append(line.strip())
+    process.stdout.close()
+    process.stderr.close()
+    process.wait()
+    return '\n'.join(stdout), '\n'.join(stderr)
+
+
+async def fetch_url(session, url, path):
+    async with session.get(url) as response:
+        with open(path, 'wb') as f:
+            while True:
+                chunk = await response.content.read(1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+
+
+def get_cache_size(username):
+    total_size = 0
+    for dirpath, _, filenames in os.walk(username):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            if not filename.endswith('.part'):
+                total_size += os.path.getsize(file_path)
+    return total_size
+
+
+def estimate_download_size(profile_dir):
+    total_size = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        for filename in filenames:
+            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'MOV', 'webm', 'mp3', 'gif')):
+                total_size += os.path.getsize(os.path.join(dirpath, filename))
+    return total_size
+
+
+def get_file_creation_date(file_path):
+    return datetime.fromtimestamp(os.path.getctime(file_path))
+
+
+def get_date_from_filename(file_name):
+    date_part = file_name.split('_')[0]
+    if re.match(r'\d{4}-\d{2}-\d{2}', date_part):
+        try:
+            return datetime.strptime(date_part, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+    return None
+
+
+def is_resolution_string(string):
+    parts = string.split('x')
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        return True
+    return False
+
+
+async def upload_with_semaphore(semaphore, process_file, *args):
+    async with semaphore:
+        await process_file(*args)
+
+
+def count_files(profile_dir):
+    total_files = 0
+    for dirpath, _, filenames in os.walk(profile_dir):
+        total_files += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
+    return total_files
+
+
+def total_files_estimated(profile_dir, max_age):
+    command = ['python3', ONLYFANS_DL_SCRIPT, profile_dir, str(max_age)]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    total_files = 0
+    while True:
+        output = process.stdout.readline().strip()
+        if not output and process.poll() is not None:
+            break
+        if output:
+            logger.info(output)
+            if "Downloaded" in output and "new" in output:
+                total_files += int(output.split()[1])
+    return total_files
+
+    
+#=============================================
+# MAIN FUNCTIONS (BIG)
+#=============================================
+async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
+    try:
+        if 'sent_files.txt' in file_path:
+            return
+        file_size = os.path.getsize(file_path)
+        if file_size > TELEGRAM_FILE_SIZE_LIMIT:
+            await split_and_send_large_file(chat_id, file_path, tag, client)
+        elif file_size > 0:
+            attempts = 0
+            while attempts < 5:
+                try:
+                    messages = await client.send_file(chat_id, file_path, caption=tag)
+                    if isinstance(messages, list):
+                        for message in messages:
+                            USER_MESSAGES.append(message.id)
+                            if message.media:
+                                MEDIA_MESSAGES.append(message.id)
+                    else:
+                        USER_MESSAGES.append(messages.id)
+                        if messages.media:
+                            MEDIA_MESSAGES.append(messages.id)
+                    if delete_media_from_server:
+                        nullify_file(file_path)
+                    break
+                except FloodWaitError as e:
+                    await handle_flood_wait(chat_id, e.seconds, client)
+                    attempts += 1
+                except ValueError as e:
+                    logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
+                    attempts += 1
+                    await asyncio.sleep(5)
+            else:
+                msg = await client.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
+                if msg:
+                    TEXT_MESSAGES.append(msg.id)
+    except Exception as e:
+        logger.error(f"Error in sending file {file_path}: {str(e)}")
+
 async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     media_group = []
     captions = []
@@ -76,7 +353,13 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     if media_group:
         try:
             caption = f"{tag} #photo\n" + "\n".join(captions)
-            await client.send_file(chat_id, media_group, caption=caption)
+            messages = await client.send_file(chat_id, media_group, caption=caption)
+
+            if isinstance(messages, list):
+                for message in messages:
+                    MEDIA_MESSAGES.append(message.id)
+            else:
+                MEDIA_MESSAGES.append(messages.id)
 
             for file_path in photo_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
@@ -93,6 +376,7 @@ async def process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_mes
     else:
         logger.info("No valid photos to send in this batch.")
 
+
 async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     media_group = []
     captions = []
@@ -107,7 +391,12 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
             file_size = os.path.getsize(file_path)
             if video_batch_size + file_size > 100 * 1024 * 1024:
                 if media_group:
-                    await client.send_file(chat_id, file=media_group, caption=f"{tag} #video\n" + "\n".join(captions), supports_streaming=True)
+                    messages = await client.send_file(chat_id, file=media_group, caption=f"{tag} #video\n" + "\n".join(captions), supports_streaming=True)
+                    if isinstance(messages, list):
+                        for message in messages:
+                            MEDIA_MESSAGES.append(message.id)
+                    else:
+                        MEDIA_MESSAGES.append(messages.id)
                     media_group = []
                     captions = []
                     video_batch_size = 0
@@ -141,7 +430,12 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
 
     if media_group:
         try:
-            await client.send_file(chat_id, file=media_group, caption=f"{tag} #video\n" + "\n".join(captions), supports_streaming=True)
+            messages = await client.send_file(chat_id, file=media_group, caption=f"{tag} #video\n" + "\n".join(captions), supports_streaming=True)
+            if isinstance(messages, list):
+                for message in messages:
+                    MEDIA_MESSAGES.append(message.id)
+            else:
+                MEDIA_MESSAGES.append(messages.id)
 
             for file_path in video_batch:
                 save_sent_file(profile_dir, os.path.basename(file_path))
@@ -161,6 +455,8 @@ async def process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_mes
     else:
         logger.info("No valid videos to send in this batch.")
 
+
+
 async def send_existing_media(username, chat_id, tag, pinned_message_id, client):
     profile_dir = username
     new_files = []
@@ -174,9 +470,11 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
                 if not is_valid_file(file_path):
                     logger.error(f"Invalid file skipped: {file_path}")
                     continue
-                if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                if file_path.endswith(('jpg', 'jpeg', 'png')) and os.path.getsize(
+                        file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
                     new_files.append(file_path)
-                elif file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')) and os.path.getsize(file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
+                elif file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')) and os.path.getsize(
+                        file_path) <= TELEGRAM_FILE_SIZE_LIMIT:
                     new_files.append(file_path)
                 elif os.path.getsize(file_path) > TELEGRAM_FILE_SIZE_LIMIT:
                     large_files.append(file_path)
@@ -220,11 +518,13 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
             if file_path.endswith(('jpg', 'jpeg', 'png')):
                 photo_batch.append(file_path)
                 if len(photo_batch) == 10:
-                    await process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    await process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id,
+                                              remaining_files, lock, client)
                     photo_batch = []
 
         if photo_batch:
-            await process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+            await process_photo_batch(profile_dir, photo_batch, chat_id, tag, pinned_message_id, remaining_files, lock,
+                                      client)
 
         video_batch = []
         video_batch_size = 0
@@ -233,7 +533,8 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
             if file_path.endswith(('mp4', 'm4v', 'MOV', 'webm')):
                 file_size = os.path.getsize(file_path)
                 if video_batch_size + file_size > TELEGRAM_FILE_SIZE_LIMIT:
-                    await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id,
+                                              remaining_files, lock, client)
                     video_batch = []
                     video_batch_size = 0
 
@@ -241,16 +542,20 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
                 video_batch_size += file_size
 
                 if len(video_batch) == 10:
-                    await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+                    await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id,
+                                              remaining_files, lock, client)
                     video_batch = []
                     video_batch_size = 0
 
         if video_batch:
-            await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock, client)
+            await process_video_batch(profile_dir, video_batch, chat_id, tag, pinned_message_id, remaining_files, lock,
+                                      client)
 
     else:
         for file_path in new_files:
-            tasks.append(upload_with_semaphore(semaphore, process_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client, delete_media_from_server))
+            tasks.append(
+                upload_with_semaphore(semaphore, process_file, profile_dir, file_path, chat_id, tag, pinned_message_id,
+                                      remaining_files, lock, client, delete_media_from_server))
 
         await asyncio.gather(*tasks)
 
@@ -261,6 +566,9 @@ async def send_existing_media(username, chat_id, tag, pinned_message_id, client)
 
     upload_complete_msg = await client.send_message(chat_id, f"Upload complete. {tag}")
     TEXT_MESSAGES.append(upload_complete_msg.id)
+    MEDIA_MESSAGES.append(upload_complete_msg.id)
+
+
 
 async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client):
     try:
@@ -303,8 +611,9 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
             attempts = 0
             while attempts < 5:
                 try:
-                    msg = await client.send_file(chat_id, file=media, caption=f"{tag} #video {post_date}", supports_streaming=True)
-                    USER_MESSAGES.append(msg.id)
+                    msg = await client.send_file(chat_id, file=media, caption=f"{tag} #video {post_date}",
+                                                 supports_streaming=True)
+                    MEDIA_MESSAGES.append(msg.id)  # Добавлено отслеживание медиа-сообщений
                     break
                 except asyncio.exceptions.TimeoutError:
                     attempts += 1
@@ -321,7 +630,7 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
                 return
 
             if delete_media_from_server:
-                with open(file_path, 'w') as f:
+                with open(file_path, 'w'):
                     pass
 
             os.remove(thumb_path)
@@ -342,7 +651,8 @@ async def process_large_file(profile_dir, file_path, chat_id, tag, pinned_messag
     except Exception as e:
         logger.error(f"Failed to process large file {file_path}: {str(e)}")
 
-async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client, delete_media_from_server):
+
+async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files_ref, lock, client):
     try:
         file_name = os.path.basename(file_path)
         sent_files = load_sent_files(profile_dir)
@@ -379,10 +689,13 @@ async def process_file(profile_dir, file_path, chat_id, tag, pinned_message_id, 
                         thumb=await client.upload_file(thumb_path),
                         nosound_video=True
                     )
-                    msg = await client.send_file(chat_id, file=media, caption=full_tag, supports_streaming=True)
+                    message = await client.send_file(chat_id, file=media, caption=full_tag, supports_streaming=True)
+                    MEDIA_MESSAGES.append(message.id)
                     os.remove(thumb_path)
                 else:
-                    await send_file_and_replace_with_empty(chat_id, file_path, full_tag, client)
+                    message = await send_file_and_replace_with_empty(chat_id, file_path, full_tag, client)
+                    if message.media:
+                        MEDIA_MESSAGES.append(message.id)
                 save_sent_file(profile_dir, file_name)
             except Exception as e:
                 logger.error(f"Failed to send file {file_path}: {e}")
@@ -429,7 +742,8 @@ async def send_existing_large_media(username, chat_id, tag, pinned_message_id, c
     remaining_files = [len(large_files)]
 
     for file_path in large_files:
-        tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag, pinned_message_id, remaining_files, lock, client))
+        tasks.append(upload_with_semaphore(semaphore, process_large_file, profile_dir, file_path, chat_id, tag,
+                                           pinned_message_id, remaining_files, lock, client))
 
     await asyncio.gather(*tasks)
 
@@ -437,16 +751,6 @@ async def send_existing_large_media(username, chat_id, tag, pinned_message_id, c
     TEXT_MESSAGES.append(upload_complete_msg.id)
 
 
-def split_video_with_ffmpeg(input_file, output_file, start_time, duration):
-    global current_split_process
-    command = [
-        'ffmpeg', '-y', '-i', input_file,
-        '-ss', str(start_time), '-t', str(duration),
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', output_file
-    ]
-    current_split_process = subprocess.Popen(command)
-    current_split_process.wait()
-    
 async def split_and_send_large_file(chat_id, file_path, tag, client):
     global current_split_process
     try:
@@ -464,7 +768,9 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
         else:
             post_date = post_date.strftime('%Y-%m-%d')
 
-        await client.send_message(chat_id, f"Detected large file: {os.path.basename(file_path)}, Size: {file_size/(1024*1024):.2f} MB, Splitting into {num_parts} parts")
+        msg = await client.send_message(chat_id,
+                                        f"Detected large file: {os.path.basename(file_path)}, Size: {file_size / (1024 * 1024):.2f} MB, Splitting into {num_parts} parts")
+        TEXT_MESSAGES.append(msg.id)
 
         for i in range(num_parts):
             start_time = i * part_duration
@@ -480,7 +786,8 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
             current_split_process.wait()
 
             if current_split_process.returncode != 0:
-                await client.send_message(chat_id, "Splitting process was stopped.")
+                msg = await client.send_message(chat_id, "Splitting process was stopped.")
+                TEXT_MESSAGES.append(msg.id)
                 break
 
             if not is_valid_file(part_path):
@@ -491,202 +798,30 @@ async def split_and_send_large_file(chat_id, file_path, tag, client):
             media = InputMediaUploadedDocument(
                 file=await client.upload_file(part_path),
                 mime_type='video/mp4',
-                attributes=[DocumentAttributeVideo(duration=part_duration, w=video.size[0], h=video.size[1], supports_streaming=True)],
+                attributes=[DocumentAttributeVideo(duration=part_duration, w=video.size[0], h=video.size[1],
+                                                   supports_streaming=True)],
                 thumb=await client.upload_file(thumb_path),
                 nosound_video=True
             )
 
-            await client.send_file(chat_id, file=media, caption=f"{tag} Part {i + 1} #video {post_date}", supports_streaming=True)
+            msg = await client.send_file(chat_id, file=media, caption=f"{tag} Part {i + 1} #video {post_date}",
+                                         supports_streaming=True)
+            MEDIA_MESSAGES.append(msg.id)
             os.remove(part_path)
             os.remove(thumb_path)
 
         if delete_media_from_server:
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w'):
                 pass
 
         current_split_process = None
     except Exception as e:
         logger.error(f"Error in splitting and sending large file {file_path}: {str(e)}")
+        msg = await client.send_message(chat_id, f"Error in splitting and sending large file {file_path}: {str(e)}")
+        TEXT_MESSAGES.append(msg.id)
+      
 
-
-async def send_file_and_replace_with_empty(chat_id, file_path, tag, client):
-    try:
-        if 'sent_files.txt' in file_path:
-            return
-        file_size = os.path.getsize(file_path)
-        if file_size > TELEGRAM_FILE_SIZE_LIMIT:
-            await split_and_send_large_file(chat_id, file_path, tag, client)
-        elif file_size > 0:
-            attempts = 0
-            while attempts < 5:
-                try:
-                    msg = await client.send_file(chat_id, file_path, caption=tag)
-                    USER_MESSAGES.append(msg.id)
-                    if delete_media_from_server:
-                        nullify_file(file_path)
-                    break
-                except FloodWaitError as e:
-                    await handle_flood_wait(chat_id, e.seconds, client)
-                    attempts += 1
-                except ValueError as e:
-                    logger.error(f"Attempt {attempts + 1}: Failed to send file {file_path}. Error: {str(e)}")
-                    attempts += 1
-                    await asyncio.sleep(5)
-            else:
-                await client.send_message(chat_id, f"Failed to send file {os.path.basename(file_path)} after multiple attempts. {tag}")
-    except Exception as e:
-        logger.error(f"Error in sending file {file_path}: {str(e)}")
-
-    
-
-def get_video_metadata(file_path):
-    try:
-        video = VideoFileClip(file_path)
-        duration = int(video.duration)
-        width, height = video.size
-        return duration, width, height
-    except Exception as e:
-        logger.error(f"Error getting video metadata for {file_path}: {e}")
-        return None, None, None
-
-def create_thumbnail(file_path):
-    try:
-        video = VideoFileClip(file_path)
-        thumb_path = file_path.replace(".mp4", ".jpg").replace(".m4v", ".jpg").replace(".MOV", ".jpg").replace(".webm", ".jpg")
-        video.save_frame(thumb_path, t=1.0)
-        return thumb_path
-    except Exception as e:
-        logger.error(f"Error creating thumbnail for {file_path}: {e}")
-        return None
-
-
-def nullify_file(file_path):
-    with open(file_path, 'w') as f:
-        pass
-
-def send_fallback_message(chat_id, message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKENS[current_bot_index]}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message
-    }
-    response = requests.post(url, data=data)
-    if response.status_code != 200:
-        logger.error(f"Failed to send fallback message: {response.text}")
-
-async def handle_flood_wait(chat_id, wait_time, client):
-    message = f"FloodWaitError: A wait of {wait_time} seconds is required. Please use /switch to switch to another bot."
-    try:
-        await client.send_message(chat_id, message)
-    except FloodWaitError:
-        send_fallback_message(chat_id, message)
-    except Exception as e:
-        send_fallback_message(chat_id, f"Error handling FloodWait: {str(e)}")
-
-async def handle_too_many_requests(chat_id, response, client):
-    retry_after = response.json().get("parameters", {}).get("retry_after", 60)
-    message = f"Too Many Requests: retry after {retry_after} seconds. Please use /switch to switch to another bot."
-    try:
-        await client.send_message(chat_id, message)
-    except FloodWaitError:
-        send_fallback_message(chat_id, message)
-    except Exception as e:
-        send_fallback_message(chat_id, f"Error handling Too Many Requests: {str(e)}")
-
-async def send_message_with_retry(chat_id, message):
-    attempts = 0
-    while attempts < 5:
-        try:
-            msg = await aiogram_bot.send_message(chat_id, message)
-            TEXT_MESSAGES.append(msg.message_id)
-            break
-        except aiogram_exceptions.RetryAfter as e:
-            logger.error(f"Target [ID:{chat_id}]: Flood wait of {e.timeout} sec.")
-            await asyncio.sleep(e.timeout)
-            attempts += 1
-        except (asyncio.exceptions.TimeoutError, aiohttp.ClientError, aiogram_exceptions.TelegramAPIError):
-            logger.exception(f"Target [ID:{chat_id}]: failed on attempt {attempts + 1}")
-            attempts += 1
-            await asyncio.sleep(5)
-
-def load_sent_files(profile_dir):
-    sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
-    if not os.path.exists(sent_files_path):
-        return set()
-    with open(sent_files_path, 'r') as f:
-        sent_files = set(line.strip() for line in f if line.strip() and not line.startswith('sent_files.txt'))
-    return sent_files
-
-def save_sent_file(profile_dir, file_name):
-    sent_files_path = os.path.join(profile_dir, 'sent_files.txt')
-    with open(sent_files_path, 'a') as f:
-        f.write(file_name + '\n')
-
-def run_script(args):
-    process = subprocess.Popen(['python3', ONLYFANS_DL_SCRIPT] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = [], []
-    for line in iter(process.stdout.readline, ''):
-        logger.info(line.strip())
-        stdout.append(line.strip())
-    for line in iter(process.stderr.readline, ''):
-        logger.error(line.strip())
-        stderr.append(line.strip())
-    process.stdout.close()
-    process.stderr.close()
-    process.wait()
-    return '\n'.join(stdout), '\n'.join(stderr)
-
-async def fetch_url(session, url, path):
-    async with session.get(url) as response:
-        with open(path, 'wb') as f:
-            while True:
-                chunk = await response.content.read(1024)
-                if not chunk:
-                    break
-                f.write(chunk)
-
-def get_cache_size(username):
-    total_size = 0
-    for dirpath, _, filenames in os.walk(username):
-        for filename in filenames:
-            file_path = os.path.join(dirpath, filename)
-            if not filename.endswith('.part'):
-                total_size += os.path.getsize(file_path)
-    return total_size
-
-
-def estimate_download_size(profile_dir):
-    total_size = 0
-    for dirpath, _, filenames in os.walk(profile_dir):
-        for filename in filenames:
-            if filename.lower().endswith(('jpg', 'jpeg', 'png', 'mp4', 'm4v', 'MOV', 'webm', 'mp3', 'gif')):
-                total_size += os.path.getsize(os.path.join(dirpath, filename))
-    return total_size
-
-def get_file_creation_date(file_path):
-    return datetime.fromtimestamp(os.path.getctime(file_path))
-
-def get_date_from_filename(file_name):
-    date_part = file_name.split('_')[0]
-    if re.match(r'\d{4}-\d{2}-\d{2}', date_part):
-        try:
-            return datetime.strptime(date_part, '%Y-%m-%d').date()
-        except ValueError:
-            return None
-    return None
-
-def is_resolution_string(string):
-    parts = string.split('x')
-    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-        return True
-    return False
-
-
-async def upload_with_semaphore(semaphore, process_file, *args):
-    async with semaphore:
-        await process_file(*args)
-
-async def download_media_without_sending(username, chat_id, tag, max_age):
+async def download_media_without_sending(username, chat_id, max_age):
     profile_dir = username
     initial_file_count = 0
     for dirpath, _, filenames in os.walk(profile_dir):
@@ -694,7 +829,10 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
 
     estimated_size = estimate_download_size(profile_dir)
     if estimated_size > CACHE_SIZE_LIMIT:
-        await send_message_with_retry(chat_id, f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase the limit or use the max_age parameter to reduce the volume of data.")
+        await send_message_with_retry(chat_id,
+                                      f"Estimated download size ({estimated_size / (1024 * 1024):.2f} MB) exceeds the "
+                                      f"cache size limit ({CACHE_SIZE_LIMIT / (1024 * 1024):.2f} MB). Please increase "
+                                      f"the limit or use the max_age parameter to reduce the volume of data.")
         return
 
     command = ['python3', ONLYFANS_DL_SCRIPT, username, str(max_age)]
@@ -718,24 +856,5 @@ async def download_media_without_sending(username, chat_id, tag, max_age):
     for dirpath, _, filenames in os.walk(profile_dir):
         final_file_count += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
 
-    total_files_downloaded = final_file_count - initial_file_count
-
-def count_files(profile_dir):
-    total_files = 0
-    for dirpath, _, filenames in os.walk(profile_dir):
-        total_files += len([f for f in filenames if not f.endswith('.part') and 'sent_files.txt' not in f])
-    return total_files
-
-def total_files_estimated(profile_dir, max_age):
-    command = ['python3', ONLYFANS_DL_SCRIPT, profile_dir, str(max_age)]
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    total_files = 0
-    while True:
-        output = process.stdout.readline().strip()
-        if not output and process.poll() is not None:
-            break
-        if output:
-            logger.info(output)
-            if "Downloaded" in output and "new" in output:
-                total_files += int(output.split()[1])
-    return total_files
+    msg = await send_message_with_retry(chat_id, f"Total new files to send: {final_file_count}.")
+    TEXT_MESSAGES.append(msg.id)
