@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import json
-import shutil
-import pathlib
-import requests
-import hashlib
-import aiohttp
+# onlyfans-dl.py
+
 import asyncio
+import hashlib
+import os
+import pathlib
+import sys
 from datetime import datetime, timedelta
+
+import aiohttp
+import requests
+
 from config import *
 
 requests.urllib3.disable_warnings()
@@ -25,7 +27,8 @@ dynamic_rules = {
     "start": "24650",
     "end": "666078a0",
     "checksum_constant": 13,
-    "checksum_indexes": [4, 5, 7, 9, 9, 11, 13, 17, 18, 19, 23, 23, 23, 24, 25, 26, 27, 27, 28, 28, 28, 28, 28, 29, 30, 32, 32, 33, 33, 34, 34, 38],
+    "checksum_indexes": [4, 5, 7, 9, 9, 11, 13, 17, 18, 19, 23, 23, 23, 24, 25, 26, 27, 27, 28, 28, 28, 28, 28, 29, 30,
+                         32, 32, 33, 33, 34, 34, 38],
     "app_token": "33d57ade8c02dbc5a333db99ff9ae26a",
     "remove_headers": ["user_id"],
     "revision": "202404181902-08205f45c3",
@@ -45,6 +48,7 @@ API_HEADER = {
     "Cookie": f"auh_id={USER_ID}; sess={SESS_COOKIE}"
 }
 
+
 def create_signed_headers(link, queryParams):
     global API_HEADER
     path = f"/api2/v2{link}"
@@ -57,11 +61,13 @@ def create_signed_headers(link, queryParams):
     hash_object = hashlib.sha1(message)
     sha_1_sign = hash_object.hexdigest()
     sha_1_b = sha_1_sign.encode("ascii")
-    checksum = sum([sha_1_b[number] for number in dynamic_rules["checksum_indexes"]]) + dynamic_rules["checksum_constant"]
+    checksum = sum([sha_1_b[number] for number in dynamic_rules["checksum_indexes"]]) + dynamic_rules[
+        "checksum_constant"]
     format = f'{dynamic_rules["prefix"]}:{{}}:{abs(checksum):x}:{dynamic_rules["suffix"]}'
     API_HEADER["sign"] = format.format(sha_1_sign)
     API_HEADER["time"] = unixtime
     return
+
 
 def show_age(timestamp):
     timestamp = str(timestamp)
@@ -69,6 +75,7 @@ def show_age(timestamp):
     t = int(tmp[0])
     dt_obj = datetime.fromtimestamp(t)
     return dt_obj.strftime("%Y-%m-%d")
+
 
 def latest(profile):
     latest_date = "0"
@@ -78,8 +85,9 @@ def latest(profile):
                 latest_date = f if f > latest_date else latest_date
     return latest_date[:10]
 
+
 def api_request(endpoint, apiType):
-    posts_limit = 50
+    posts_limit = POSTS_LIMIT  # Используем значение из config.py
     age = ''
     getParams = {"limit": str(posts_limit), "order": "publish_date_asc"}
     if apiType == 'messages':
@@ -131,6 +139,7 @@ def api_request(endpoint, apiType):
             else:
                 getParams['afterPublishTime'] = list_extend[-1]['postedAtPrecise']
     return list_base
+    
 
 def get_user_info(profile):
     info = api_request(f"/users/{profile}", 'user-info')
@@ -146,6 +155,7 @@ def get_subscriptions():
         print(f"\nSUBSCRIPTIONS ERROR: {subs['error']['message']}")
         return []
     return [row['username'] for row in subs]
+
 
 async def download_file(session, url, dest_path):
     temp_path = f"{os.path.dirname(dest_path)}/bad-{os.path.basename(dest_path)}.temp"
@@ -165,7 +175,6 @@ async def download_file(session, url, dest_path):
     return os.path.exists(dest_path)  # Проверяем, был ли файл успешно переименован
 
 
-
 async def download_media(media, subtype, postdate, album=''):
     filename = f"{postdate}_{media['id']}"
     if subtype == "stories":
@@ -180,7 +189,8 @@ async def download_media(media, subtype, postdate, album=''):
 
     if media["type"] not in ["photo", "video", "audio", "gif"] or not media['canView']:
         return
-    if (media["type"] == "photo" and not PHOTOS) or (media["type"] == "video" and not VIDEOS) or (media["type"] == "audio" and not AUDIO):
+    if (media["type"] == "photo" and not PHOTOS) or (media["type"] == "video" and not VIDEOS) or (
+            media["type"] == "audio" and not AUDIO):
         return
 
     extension = source.split('?')[0].split('.')[-1]
@@ -209,6 +219,7 @@ async def download_media(media, subtype, postdate, album=''):
         if VERBOSITY >= 4:
             print(path + ' ... already exists')
 
+
 async def get_content(MEDIATYPE, API_LOCATION):
     posts = api_request(API_LOCATION, MEDIATYPE)
     if "error" in posts:
@@ -235,22 +246,26 @@ async def get_content(MEDIATYPE, API_LOCATION):
             for media in post["media"]:
                 if MEDIATYPE == "stories":
                     postdate = media["createdAt"][:10]
-                if "source" in media and "source" in media["source"] and media["source"]["source"] and ("canView" not in media or media["canView"]) or "files" in media:
+                if "source" in media and "source" in media["source"] and media["source"]["source"] and (
+                        "canView" not in media or media["canView"]) or "files" in media:
                     tasks.append(download_media_with_semaphore(semaphore, media, MEDIATYPE, postdate, album))
         await asyncio.gather(*tasks)
         global new_files
         print(f"Downloaded {new_files} new {MEDIATYPE}")
         new_files = 0
 
+
 async def download_media_with_semaphore(semaphore, media, MEDIATYPE, postdate, album):
     async with semaphore:
         await download_media(media, MEDIATYPE, postdate, album)
+
 
 def delete_temp_files(profile):
     for dirpath, dirs, files in os.walk(profile):
         for file in files:
             if file.startswith('bad-') and file.endswith('.temp'):
                 os.remove(os.path.join(dirpath, file))
+
 
 def print_usage():
     print("\nUsage: onlyfans-dl.py <list of profiles / all> <max age (optional)>\n")
@@ -262,6 +277,7 @@ def print_usage():
     print("Use -n <number> to select a profile from the list by number.\n")
     print("Use --help to display this text.\n")
     exit()
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -323,7 +339,6 @@ if __name__ == "__main__":
             continue
 
         PROFILE_ID = str(user_info["id"])
-
 
         if LATEST:
             latestDate = latest(PROFILE)
