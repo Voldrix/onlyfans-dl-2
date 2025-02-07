@@ -10,46 +10,7 @@ import hashlib
 from datetime import datetime, timedelta
 requests.urllib3.disable_warnings()
 
-######################
-# CONFIGURATIONS     #
-######################
-
-#Session Variables (update every time you login or your browser updates)
-USER_ID = ""
-USER_AGENT = ""
-X_BC = ""
-SESS_COOKIE = ""
-
-#0 = do not print file names or api calls
-#1 = print filenames only when max_age is set
-#2 = always print filenames
-#3 = print api calls
-#4 = print skipped files that already exist
-VERBOSITY = 2
-#Download Directory. Uses CWD if null
-DL_DIR = ''
-#List of accounts to skip
-ByPass = ['']
-
-#Separate photos into subdirectories by post/album (Single photo posts are not put into subdirectories)
-ALBUMS = True
-#Use content type subfolders (messgaes/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
-USE_SUB_FOLDERS = True
-
-#Content types to download
-VIDEOS = True
-PHOTOS = True
-AUDIO = True
-POSTS = True
-STORIES = True
-MESSAGES = True
-ARCHIVED = True
-PURCHASED = True
-
-######################
-# END CONFIGURATIONS #
-######################
-
+from configurations import *
 
 API_URL = "https://onlyfans.com/api2/v2"
 new_files = 0
@@ -98,7 +59,7 @@ def showAge(myStr):
 
 
 def latest(profile):
-	latest = "0";
+	latest = "0"
 	for dirpath, dirs, files in os.walk(profile):
 		for f in files:
 			if f.startswith('20'):
@@ -115,6 +76,8 @@ def api_request(endpoint, apiType):
 		getParams['order'] = "desc"
 	if apiType == 'subscriptions':
 		getParams['type'] = 'active'
+	if apiType == 'all_subscriptions':
+		getParams['type'] = 'all'
 	if MAX_AGE and apiType != 'messages' and apiType != 'purchased' and apiType != 'subscriptions': #Cannot be limited by age
 		getParams['afterPublishTime'] = str(MAX_AGE) + ".000000"
 		age = " age " + str(showAge(getParams['afterPublishTime']))
@@ -175,6 +138,12 @@ def get_subscriptions():
 		return
 	return [row['username'] for row in subs]
 
+def get_all_subscriptions():
+	subs = api_request("/subscriptions/subscribes", "all_subscriptions")
+	if "error" in subs:
+		print("\nSUBSCRIPTIONS ERROR: " + subs["error"]["message"])
+		return
+	return [row['username'] for row in subs]
 
 
 def download_media(media, subtype, postdate, album = ''):
@@ -243,7 +212,7 @@ def download_media(media, subtype, postdate, album = ''):
 
 
 def get_content(MEDIATYPE, API_LOCATION):
-	posts = api_request(API_LOCATION, MEDIATYPE)
+	posts = api_request(apiType=MEDIATYPE, endpoint=API_LOCATION)
 	if "error" in posts:
 		print("\nERROR: " + API_LOCATION + " :: " + posts["error"]["message"])
 	if MEDIATYPE == "messages":
@@ -306,37 +275,44 @@ if __name__ == "__main__":
 	if PROFILE_LIST[0] == "all":
 		PROFILE_LIST = get_subscriptions()
 
-	for PROFILE in PROFILE_LIST:
-		if PROFILE in ByPass:
-			if VERBOSITY > 0:
-				print("skipping " + PROFILE)
-			continue
-		user_info = get_user_info(PROFILE)
+	if PROFILE_LIST[0] == "all_subs":
+		PROFILE_LIST = get_all_subscriptions()
 
-		if "id" in user_info:
-			PROFILE_ID = str(user_info["id"])
-		else:
-			continue
+	if not len(PROFILE_LIST) < 1:
+		for PROFILE in PROFILE_LIST:
+			if PROFILE in ByPass:
+				if VERBOSITY > 0:
+					print("skipping " + PROFILE)
+				continue
+			user_info = get_user_info(PROFILE)
 
-		if LATEST:
-			latestDate = latest(PROFILE)
-			if latestDate != "0":
-				MAX_AGE = int(datetime.strptime(latestDate + ' 00:00:00', '%Y-%m-%d %H:%M:%S').timestamp())
-				print("\nGetting posts newer than " + latestDate + " 00:00:00 UTC")
+			if "id" in user_info:
+				PROFILE_ID = str(user_info["id"])
+			else:
+				continue
 
-		if os.path.isdir(PROFILE):
-			print("\n" + PROFILE + " exists.\nDownloading new media, skipping pre-existing.")
-		else:
-			print("\nDownloading content to " + PROFILE)
+			if LATEST:
+				latestDate = latest(PROFILE)
+				if latestDate != "0":
+					MAX_AGE = int(datetime.strptime(latestDate + ' 00:00:00', '%Y-%m-%d %H:%M:%S').timestamp())
+					print("\nGetting posts newer than " + latestDate + " 00:00:00 UTC")
 
-		if POSTS:
-			get_content("posts", "/users/" + PROFILE_ID + "/posts")
-		if ARCHIVED:
-			get_content("archived", "/users/" + PROFILE_ID + "/posts/archived")
-		if STORIES:
-			get_content("stories", "/users/" + PROFILE_ID + "/stories")
-		if MESSAGES:
-			get_content("messages", "/chats/" + PROFILE_ID + "/messages")
-		if PURCHASED:
-			get_content("purchased", "/posts/paid")
+			if os.path.isdir(PROFILE):
+				print("\n" + PROFILE + " exists.\nDownloading new media, skipping pre-existing.")
+			else:
+				print("\nDownloading content to " + PROFILE)
+
+			if POSTS:
+				get_content("posts", "/users/" + PROFILE_ID + "/posts")
+			if ARCHIVED:
+				get_content("archived", "/users/" + PROFILE_ID + "/posts/archived")
+			if STORIES:
+				get_content("stories", "/users/" + PROFILE_ID + "/stories")
+			if MESSAGES:
+				get_content("messages", "/chats/" + PROFILE_ID + "/messages")
+			if PURCHASED:
+				get_content("purchased", "/posts/paid")
+	
+	else:
+		print("No Profile found!")
 
