@@ -8,43 +8,70 @@ import pathlib
 import requests
 import hashlib
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 requests.urllib3.disable_warnings()
 
 ######################
 # CONFIGURATIONS     #
 ######################
 
+load_dotenv()
 #Session Variables (update every time you login or your browser updates)
-USER_ID = ""
-USER_AGENT = ""
-X_BC = ""
-SESS_COOKIE = ""
+USER_ID = os.getenv("OF_USER_ID", "").strip()
+if USER_ID == "":
+	print("Please set the OF_USER_ID environment variable")
+	sys.exit(1)
+USER_AGENT = os.getenv("OF_USER_AGENT", "").strip()
+if USER_AGENT == "":
+	print("Please set the OF_USER_AGENT environment variable")
+	sys.exit(1)
+X_BC = os.getenv("OF_X_BC", "").strip()
+if X_BC == "":
+	print("Please set the OF_X_BC environment variable")
+	sys.exit(1)
+SESS_COOKIE = os.getenv("OF_SESS_COOKIE", "").strip()
+if SESS_COOKIE == "":
+	print("Please set the OF_SESS_COOKIE environment variable")
+	sys.exit(1)
 
 #0 = do not print file names or api calls
 #1 = print filenames only when max_age is set
 #2 = always print filenames
 #3 = print api calls
 #4 = print skipped files that already exist
-VERBOSITY = 2
+str_verbosity = os.getenv("OF_VERBOSITY", "2").strip()
+if str_verbosity not in ["0", "1", "2", "3", "4"]:
+	print("Invalid verbosity value: " + str_verbosity)
+	sys.exit(1)
+VERBOSITY = int(str_verbosity)
+
 #Download Directory. Uses CWD if null
-DL_DIR = ''
+DL_DIR = os.getenv("OF_DL_DIR", "").strip()
 #List of accounts to skip
-ByPass = ['']
+ByPass = [ s.strip() for s in os.getenv("OF_BYPASS", "").strip().split(',')]
+
+def parse_bool(s: str) -> bool:
+	s = s.strip()
+	if s in ["1", "True", "true", "yes"]:
+		return True
+	if s in ["0", "False", "false", "no"]:
+		return False
+	raise ValueError(f"Invalid boolean value: {s}")
 
 #Separate photos into subdirectories by post/album (Single photo posts are not put into subdirectories)
-ALBUMS = True
+ALBUMS = parse_bool(os.getenv("OF_ALBUMS", "True"))
 #Use content type subfolders (messgaes/archived/stories/purchased), or download everything to /profile/photos and /profile/videos
-USE_SUB_FOLDERS = True
+USE_SUB_FOLDERS = parse_bool(os.getenv("OF_USE_SUB_FOLDERS", "True"))
 
 #Content types to download
-VIDEOS = True
-PHOTOS = True
-AUDIO = True
-POSTS = True
-STORIES = True
-MESSAGES = True
-ARCHIVED = True
-PURCHASED = True
+VIDEOS = parse_bool(os.getenv("OF_VIDEOS", "True"))
+PHOTOS = parse_bool(os.getenv("OF_PHOTOS", "True"))
+AUDIO = parse_bool(os.getenv("OF_AUDIO", "True"))
+POSTS = parse_bool(os.getenv("OF_POSTS", "True"))
+STORIES = parse_bool(os.getenv("OF_STORIES", "True"))
+MESSAGES = parse_bool(os.getenv("OF_MESSAGES", "True"))
+ARCHIVED = parse_bool(os.getenv("OF_ARCHIVED", "True"))
+PURCHASED = parse_bool(os.getenv("OF_PURCHASED", "True"))
 
 ######################
 # END CONFIGURATIONS #
