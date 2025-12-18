@@ -40,10 +40,13 @@ You need your browser's __user-agent__, onlyfans **sess**ion cookie, __x-bc__ HT
   - Click __Headers__ sub-tab (default)
   - Click on one of the JSON elements (may need to refresh page) and look under __request headers__ on the right
 
-There are variables for each of these values at the top of the script. Make sure to update them every time you login or your browser updates.
+There are variables for each of these values in the session_vars.py script,
+which contains instructions for copying to session_vars_local.py and
+inserting the necessary values.
+
+Make sure to update them every time you login or your browser updates.
 
 #### ToDo
 A post with a single photo and video shouldn't be considered an album.\
 Allow messages to be limited by age through a separate mechanism/function.
-
 
