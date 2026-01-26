@@ -1,3 +1,5 @@
 configurations.py
 logs/
 .vscode/
+__pycache__/
+*.pyc
