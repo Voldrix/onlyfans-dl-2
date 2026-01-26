@@ -7,6 +7,8 @@ A subdirectory structure will be built depending on the options set.\
 Any existing media will be skipped, not redownloaded.\
 Content will be named as DATE_ID.EXT (e.g. 2021-04-17_123456.jpg)
 
+The configurations-example.py need to be renamed to configurations.py and you need to enter you data accordingly.
+
 #### Requires
 Requires Python3 and 'requests': `python -m pip install requests`
 or
@@ -18,6 +20,7 @@ Using pip directly: `pip -r install requirements.txt`
 * Choose to sort posts with more than one photo into "albums" (subfolders)
 * Download everything, or only the last &lt;integer&gt; days of content
 * Specify multiple profiles at once or use "all" keyword to get subscriptions dynamically
+* Ignore short videos
 
 ## Usage
 First make sure to set your session variables in the script and configure your options.

@@ -35,6 +35,7 @@ STORIES = True
 MESSAGES = True
 ARCHIVED = True
 PURCHASED = True
+IGNORE_SHORT_VIDEOS = True
 
 ######################
 # END CONFIGURATIONS #

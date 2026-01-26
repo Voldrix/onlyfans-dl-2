@@ -197,6 +197,14 @@ def download_media(media, subtype, postdate, album=""):
     ):
         return
 
+    # Ignore short videos if IGNORE_SHORT_VIDEOS is enabled
+    if media["type"] == "video" and IGNORE_SHORT_VIDEOS:
+        if "duration" in media and media["duration"] is not None:
+            if media["duration"] < 30:
+                if VERBOSITY >= 2:
+                    print(f"Skipping short video (duration: {media['duration']}s): {filename}")
+                return
+
     extension = source.split("?")[0].split(".")[-1]
     ext = "." + extension
     if len(ext) < 3:
