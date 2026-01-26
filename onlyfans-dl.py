@@ -162,7 +162,9 @@ def get_subscriptions():
     return [row["username"] for row in subs]
 
 
-def download_media(media, subtype, postdate, album=""):
+def download_media(media, subtype, postdate, album="", profile_dir=None):
+    if profile_dir is None:
+        profile_dir = PROFILE
     filename = postdate + "_" + str(media["id"])
 
     if "source" in media:
@@ -200,7 +202,7 @@ def download_media(media, subtype, postdate, album=""):
     # Ignore short videos if IGNORE_SHORT_VIDEOS is enabled
     if media["type"] == "video" and IGNORE_SHORT_VIDEOS:
         if "duration" in media and media["duration"] is not None:
-            if media["duration"] < 30:
+            if media["duration"] < 60:
                 if VERBOSITY >= 2:
                     print(f"Skipping short video (duration: {media['duration']}s): {filename}")
                 return
@@ -216,11 +218,11 @@ def download_media(media, subtype, postdate, album=""):
         path = "/" + media["type"] + "s/" + filename + ext
     if USE_SUB_FOLDERS and subtype != "posts":
         path = "/" + subtype + path
-    if not os.path.isdir(PROFILE + os.path.dirname(path)):
-        pathlib.Path(PROFILE + os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
-    if not os.path.isfile(PROFILE + path):
+    if not os.path.isdir(profile_dir + os.path.dirname(path)):
+        pathlib.Path(profile_dir + os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
+    if not os.path.isfile(profile_dir + path):
         if VERBOSITY >= 2 or (MAX_AGE and VERBOSITY >= 1):
-            print(PROFILE + path)
+            print(profile_dir + path)
         global new_files
         new_files += 1
         try:
@@ -233,18 +235,20 @@ def download_media(media, subtype, postdate, album=""):
             return
         # Writing to a temp file while downloading, so if we interrupt
         # a file, we will not skip it but re-download it at next time.
-        with open(PROFILE + path + ".part", "wb") as f:
+        with open(profile_dir + path + ".part", "wb") as f:
             r.raw.decode_content = True
             shutil.copyfileobj(r.raw, f)
         r.close()
         # Downloading finished, remove temp file.
-        shutil.move(PROFILE + path + ".part", PROFILE + path)
+        shutil.move(profile_dir + path + ".part", profile_dir + path)
     else:
         if VERBOSITY >= 4:
             print(path + " ... already exists")
 
 
-def get_content(MEDIATYPE, API_LOCATION):
+def get_content(MEDIATYPE, API_LOCATION, profile_dir=None):
+    if profile_dir is None:
+        profile_dir = PROFILE
     posts = api_request(API_LOCATION, MEDIATYPE)
     if "error" in posts:
         print("\nERROR: " + API_LOCATION + " :: " + posts["error"]["message"])
@@ -283,7 +287,7 @@ def get_content(MEDIATYPE, API_LOCATION):
                     and media["source"]["source"]
                     and ("canView" not in media or media["canView"])
                 ) or ("files" in media and "canView" in media and media["canView"]):
-                    download_media(media, MEDIATYPE, postdate, album)
+                    download_media(media, MEDIATYPE, postdate, album, profile_dir)
         global new_files
         print("Downloaded " + str(new_files) + " new " + MEDIATYPE)
         new_files = 0
@@ -319,6 +323,9 @@ if __name__ == "__main__":
         if PROFILE in ByPass:
             continue
 
+        # Combine DL_DIR with PROFILE path if DL_DIR is set
+        profile_path = DL_DIR + PROFILE if DL_DIR else PROFILE
+
         user = get_user_info(PROFILE)
         if "id" not in user:
             continue
@@ -326,17 +333,17 @@ if __name__ == "__main__":
         PROFILE_ID = str(user["id"])
 
         if LATEST:
-            ld = latest(PROFILE)
+            ld = latest(profile_path)
             if ld != "0":
                 MAX_AGE = int(datetime.strptime(ld, "%Y-%m-%d").timestamp())
 
         if POSTS:
-            get_content("posts", f"/users/{PROFILE_ID}/posts")
+            get_content("posts", f"/users/{PROFILE_ID}/posts", profile_path)
         if ARCHIVED:
-            get_content("archived", f"/users/{PROFILE_ID}/posts/archived")
+            get_content("archived", f"/users/{PROFILE_ID}/posts/archived", profile_path)
         if STORIES:
-            get_content("stories", f"/users/{PROFILE_ID}/stories")
+            get_content("stories", f"/users/{PROFILE_ID}/stories", profile_path)
         if MESSAGES:
-            get_content("messages", f"/chats/{PROFILE_ID}/messages")
+            get_content("messages", f"/chats/{PROFILE_ID}/messages", profile_path)
         if PURCHASED:
-            get_content("purchased", "/posts/paid")
+            get_content("purchased", "/posts/paid", profile_path)
