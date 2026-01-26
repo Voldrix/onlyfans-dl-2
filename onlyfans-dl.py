@@ -204,7 +204,9 @@ def download_media(media, subtype, postdate, album="", profile_dir=None):
         if "duration" in media and media["duration"] is not None:
             if media["duration"] < 60:
                 if VERBOSITY >= 2:
-                    print(f"Skipping short video (duration: {media['duration']}s): {filename}")
+                    print(
+                        f"Skipping short video (duration: {media['duration']}s): {filename}"
+                    )
                 return
 
     extension = source.split("?")[0].split(".")[-1]
@@ -219,7 +221,9 @@ def download_media(media, subtype, postdate, album="", profile_dir=None):
     if USE_SUB_FOLDERS and subtype != "posts":
         path = "/" + subtype + path
     if not os.path.isdir(profile_dir + os.path.dirname(path)):
-        pathlib.Path(profile_dir + os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(profile_dir + os.path.dirname(path)).mkdir(
+            parents=True, exist_ok=True
+        )
     if not os.path.isfile(profile_dir + path):
         if VERBOSITY >= 2 or (MAX_AGE and VERBOSITY >= 1):
             print(profile_dir + path)
@@ -324,7 +328,7 @@ if __name__ == "__main__":
             continue
 
         # Combine DL_DIR with PROFILE path if DL_DIR is set
-        profile_path = DL_DIR + PROFILE if DL_DIR else PROFILE
+        profile_path = os.path.join(DL_DIR, PROFILE) if DL_DIR else PROFILE
 
         user = get_user_info(PROFILE)
         if "id" not in user:
