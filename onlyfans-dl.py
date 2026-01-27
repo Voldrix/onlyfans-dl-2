@@ -364,4 +364,4 @@ if __name__ == "__main__":
         if MESSAGES:
             get_content("messages", f"/chats/{PROFILE_ID}/messages", profile_path)
         if PURCHASED:
-            get_content("purchased", "/posts/paid", profile_path)
+            get_content("purchased", "/posts/paid/all", profile_path)
