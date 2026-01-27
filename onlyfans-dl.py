@@ -302,9 +302,22 @@ def get_content(MEDIATYPE, API_LOCATION, profile_dir=None):
 # ===========================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="OnlyFans Downloader")
+    parser = argparse.ArgumentParser(
+        description="OnlyFans Downloader",
+        epilog="Examples:\n"
+               "  python onlyfans-dl.py                      # Download all subscribed profiles\n"
+               "  python onlyfans-dl.py -a                   # Download all subscribed profiles (short form)\n"
+               "  python onlyfans-dl.py username1 username2  # Download specific profiles\n"
+               "  python onlyfans-dl.py -a --days 7          # Download all profiles from last 7 days\n"
+               "  python onlyfans-dl.py -a --latest          # Download all with latest per profile\n"
+               "  python onlyfans-dl.py -h                   # Show this help message",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
-        "profiles", nargs="*", help="Profiles to download (default: all)"
+        "profiles", nargs="*", help="Profiles to download (leave empty or use -a/--all for all)"
+    )
+    parser.add_argument(
+        "-a", "--all", action="store_true", help="Download all subscribed profiles (same as no arguments)"
     )
     parser.add_argument("--days", type=int, help="Download content newer than N days")
     parser.add_argument(
@@ -313,7 +326,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not args.profiles:
+    # Download all profiles if no specific profiles given or --all/-a is used
+    if args.all or not args.profiles:
         PROFILE_LIST = get_subscriptions()
     else:
         PROFILE_LIST = args.profiles
