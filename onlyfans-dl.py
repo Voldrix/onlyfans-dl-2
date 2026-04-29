@@ -186,9 +186,11 @@ def download_media(media, subtype, postdate, album = ''):
 		if "full" in media["files"]:
 			if media["files"]["full"]["url"] is not None:
 				source = media["files"]["full"]["url"]
-			else:
+			elif media["files"]["preview"] and media["files"]["preview"]["url"] is not None:
 				source = media["files"]["preview"]["url"]
-		elif "preview" in media:
+			else:
+				return
+		elif "preview" in media and media["files"]["preview"]:
 			source = media["preview"]
 		else:
 			return
